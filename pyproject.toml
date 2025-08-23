@@ -1,0 +1,37 @@
+[project]
+name = "waypoint"
+version = "0.1.0"
+description = "Workflow orchestration library."
+readme = "README.md"
+authors = [{ name = "Charles Swartz", email = "charles.w.swartz.vi@gmail.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "cloudpickle>=3.1.1",
+    "pluggy>=1.6.0",
+    "pydantic>=2.11.7",
+]
+
+[project.optional-dependencies]
+rich = [
+    "rich>=14.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "pyright",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-mock",
+    "ruff",
+]
+
+# [[tool.uv.index]]
+# url = "https://pypi.q.local/simple"
+# default = true
+

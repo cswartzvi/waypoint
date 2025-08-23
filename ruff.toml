@@ -1,0 +1,42 @@
+line-length = 100
+show-fixes = true
+
+[format]
+docstring-code-format = true
+
+[lint]
+select = [
+    "D",    # pydocstyle errors
+    "D200", # One-liner docstring should fit within a single line
+    "D213", # Multi-line docstring summary should start at second line
+    "D400", # First line should end with a period
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+
+]
+ignore = [
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D105", # Missing docstring in magic method
+    "D107", # Missing docstring in __init__
+    "D212", # Multi-line docstring summary should start at the first line
+]
+
+[lint.isort]
+force-single-line = true
+single-line-exclusions = ["typing", "typing_extensions"]
+
+[lint.per-file-ignores]
+"noxfile.py" = ["D"]
+"tests/**" = ["D"]
+"test*.py" = ["D"]
+
+[lint.pydocstyle]
+convention = "google"
+ignore-decorators = [
+    "typing.overload",
+    "typing.no_type_check",
+    "pydantic.field_validator",
+]

@@ -1,0 +1,28 @@
+[paths]
+source =
+    ./src
+    */site-packages
+cases =
+    tests/cases
+    */pytest-*/tmp*/cases
+
+[report]
+exclude_also =
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    class \(.*\bProtocol.*\):
+    @(abc\\.)?abstractmethod
+    @overload
+fail_under = 0
+
+[run]
+source =
+    hamilton_composer
+branch = true
+; relative_files = true
+sigterm = true

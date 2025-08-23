@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 30 1118 196" role="img" aria-label="Waypoint logo">
+  <title>Waypoint</title>
+  <desc>Wordmark 'WAYPOINT' with a minimal compass to the right. Compass tucked close to T, needle pointing North-Northeast (NNE). Blue #0969DA, transparent background.</desc>
+  <defs>
+    <style>
+      .fg { fill:#0969DA; stroke:#0969DA; }
+      .text { fill:#0969DA; font-family: Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif; font-weight: 800; }
+    </style>
+  </defs>
+
+  <!-- Wordmark -->
+  <text x="20" y="182" font-size="160" class="text">WAYPOINT</text>
+
+  <!-- Compass group (perfect circle + rotated needle), tucked close to T -->
+  <g class="fg" vector-effect="non-scaling-stroke">
+    <!-- outer ring -->
+    <circle cx="1030" cy="128" r="78" fill="none" stroke-width="16"/>
+    <!-- needle rotated to NNE -->
+    <g transform="rotate(22.5,1030,128)">
+      <path d="M1030 60 L1060 128 L1030 196 L1000 128 Z" fill="#0969DA" stroke="none"/>
+    </g>
+  </g>
+</svg>
