@@ -1,7 +1,6 @@
 import io
 from collections.abc import Collection
 from collections.abc import Iterable
-from collections.abc import Sequence
 from typing import Any, AsyncGenerator, AsyncIterable, Tuple, TypeVar, cast
 
 T = TypeVar("T")

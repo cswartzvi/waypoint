@@ -6,12 +6,10 @@ import pytest
 
 from waypoint.exceptions import ParameterBindError
 from waypoint.exceptions import SignatureMismatchError
-from waypoint.utils.callables import (
-    arguments_to_args_kwargs,
-    collapse_variadic_arguments,
-    explode_variadic_arguments,
-)
+from waypoint.utils.callables import arguments_to_args_kwargs
 from waypoint.utils.callables import call_with_arguments
+from waypoint.utils.callables import collapse_variadic_arguments
+from waypoint.utils.callables import explode_variadic_arguments
 from waypoint.utils.callables import get_call_arguments
 from waypoint.utils.callables import get_docstring_summary
 from waypoint.utils.callables import get_function_name

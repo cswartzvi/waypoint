@@ -4,7 +4,9 @@ import asyncio
 
 import pytest
 
-from waypoint.utils.collections import aenumerate, ensure_iterable, is_iterable
+from waypoint.utils.collections import aenumerate
+from waypoint.utils.collections import ensure_iterable
+from waypoint.utils.collections import is_iterable
 
 
 class TestAenumerate:
