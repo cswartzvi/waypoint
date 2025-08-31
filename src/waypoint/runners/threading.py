@@ -5,9 +5,11 @@ from contextlib import ExitStack
 from contextlib import contextmanager
 from contextvars import copy_context
 from threading import Event
-from typing import Any, Callable, ClassVar, Self, TypeVar, override
+from typing import Any, Callable, ClassVar, TypeVar
 from uuid import UUID
 from uuid import uuid4
+
+from typing_extensions import Self, override
 
 from waypoint.exceptions import TaskRunError
 from waypoint.futures import TaskFuture

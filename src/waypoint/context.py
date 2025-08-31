@@ -6,12 +6,13 @@ from contextlib import ExitStack
 from contextlib import contextmanager
 from contextvars import ContextVar
 from contextvars import Token
-from typing import TYPE_CHECKING, Any, ClassVar, Self
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pluggy import PluginManager
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import PrivateAttr
+from typing_extensions import Self
 
 from waypoint.runners.base import BaseTaskRunner
 from waypoint.tasks import TaskData

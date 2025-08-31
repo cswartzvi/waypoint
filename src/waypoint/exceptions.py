@@ -1,5 +1,7 @@
 import inspect
-from typing import Any, Callable, Self
+from typing import Any, Callable
+
+from typing_extensions import Self
 
 
 class WaypointException(Exception):

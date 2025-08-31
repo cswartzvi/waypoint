@@ -1,7 +1,9 @@
 import asyncio
 import inspect
 from concurrent.futures import Future
-from typing import Any, Callable, ClassVar, Self, override
+from typing import Any, Callable, ClassVar
+
+from typing_extensions import Self, override
 
 from waypoint.futures import TaskFuture
 from waypoint.runners.base import BaseTaskRunner
