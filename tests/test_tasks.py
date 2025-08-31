@@ -22,12 +22,6 @@ def flow_context(request):
             yield
 
 
-@pytest.fixture
-def no_flow_context():
-    """Empty fixture to override flow_context for tests that don't need it."""
-    yield
-
-
 class TestTaskDecorator:
     """Test the @task decorator functionality."""
 
@@ -424,7 +418,8 @@ class TestTaskSubmission:
         result = future.result()
         assert result == 30
 
-    def test_submit_nested_task_use_sequential_runner(self, no_flow_context):
+    @pytest.mark.noautouse
+    def test_submit_nested_task_use_sequential_runner(self):
         """Test that nested task submissions use the sequential task runner."""
         from unittest.mock import patch
 
@@ -496,6 +491,19 @@ class TestTaskSubmission:
         # With proper deferred execution, submit returns immediately
         with pytest.raises(RuntimeError, match="Submitted task error"):
             _ = submit_task(error_task)
+
+    @pytest.mark.noautouse
+    def test_submit_task_outside_flow_context_raises(self):
+        """Test that submitting a task outside a flow context raises an error."""
+
+        @task
+        def simple_task() -> int:
+            return 42
+
+        from waypoint.exceptions import MissingContextError
+
+        with pytest.raises(MissingContextError):
+            submit_task(simple_task)
 
 
 class TestTaskParameterBinding:
