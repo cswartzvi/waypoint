@@ -199,7 +199,7 @@ class _BaseTaskRunEngine(Generic[P, R]):
 
         Will automatically add `task_data` and `task_run` to the arguments if not provided.
         """
-        from waypoint.hooks.specs import try_run_hook
+        from waypoint.hooks.manager import try_run_hook
 
         kwargs.setdefault("task_data", self.task_data)
         kwargs.setdefault("task_run", self.task_run)

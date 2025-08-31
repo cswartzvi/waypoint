@@ -160,7 +160,7 @@ class BaseFlowRunEngine(Generic[P, R]):
 
         Will automatically add `flow_data` and `flow_run` to the arguments if not provided.
         """
-        from waypoint.hooks.specs import try_run_hook
+        from waypoint.hooks.manager import try_run_hook
 
         if "flow_data" not in kwargs:
             kwargs["flow_data"] = self.flow_data
