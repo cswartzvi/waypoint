@@ -10,4 +10,4 @@
 [![Tests](https://img.shields.io/github/actions/workflow/status/cswartzvi/waypoint/main.yaml?branch=main&label=Tests&logo=github)](https://github.com/cswartzvi/waypoint/actions/workflows/main.yaml)
 [![codecov](https://codecov.io/github/cswartzvi/waypoint/graph/badge.svg?token=1o01x0xk7i)](https://codecov.io/github/cswartzvi/waypoint)
 
-Waypoint is a lightweight alternative to cloud-native orchestrators, giving scientists and engineers the flexibility to design and run workflows with full control—no vendor lock-in, no central server required.schedule
+Waypoint is a lightweight alternative to cloud-native orchestrators, giving scientists and engineers the flexibility to design and run workflows with full control—no vendor lock-in, no central server required.
