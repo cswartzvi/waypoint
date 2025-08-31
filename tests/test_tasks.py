@@ -7,6 +7,7 @@ import pytest
 
 from waypoint import submit_task
 from waypoint import task
+from waypoint.exceptions import TaskRunError
 from waypoint.flows import flow_session
 from waypoint.tasks import TaskData
 from waypoint.tasks import get_task_data
@@ -229,7 +230,7 @@ class TestTaskExecution:
         def failing_task() -> None:
             raise ValueError("Task failed")
 
-        with pytest.raises(ValueError, match="Task failed"):
+        with pytest.raises(TaskRunError, match="Task failed"):
             failing_task()
 
     def test_task_generator_exception_propagation(self):
@@ -267,7 +268,7 @@ class TestTaskExecution:
             await asyncio.sleep(0.01)
             raise ValueError("Async task failed")
 
-        with pytest.raises(ValueError, match="Async task failed"):
+        with pytest.raises(TaskRunError, match="Async task failed"):
             asyncio.run(async_failing_task())
 
     def test_async_generator_task_exception_propagation(self):

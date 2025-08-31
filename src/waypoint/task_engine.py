@@ -20,6 +20,7 @@ from typing import (
 )
 
 from waypoint.context import TaskRunContext
+from waypoint.exceptions import TaskRunError
 from waypoint.hooks.manager import get_hook_manager
 from waypoint.task_run import TaskRun
 from waypoint.tasks import TaskData
@@ -250,7 +251,7 @@ class SyncTaskRunEngine(_BaseSyncTaskRunEngine[P, R]):
         try:
             result = call_with_arguments(self.task_function, self.task_run.parameters)
         except Exception as exception:
-            error = exception
+            error = TaskRunError(f"Error during task run: {exception}", exc=exception)
         finally:
             self._run_hook("after_task_run", result=result, error=error)
             if error:
@@ -332,7 +333,7 @@ class AsyncTaskRunEngine(_BaseAsyncTaskRunEngine[P, Coroutine[Any, Any, R]]):
         try:
             result = await call_with_arguments(self.task_function, self.task_run.parameters)
         except Exception as exception:
-            error = exception
+            error = TaskRunError(f"Error during task run: {exception}", exc=exception)
         finally:
             self._run_hook("after_task_run", result=result, error=error)
             if error:

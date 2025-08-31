@@ -7,6 +7,7 @@ import pytest
 
 from waypoint import flow
 from waypoint import task
+from waypoint.exceptions import FlowRunError, TaskRunError
 from waypoint.flows import FlowData
 from waypoint.flows import flow_session
 from waypoint.flows import get_flow_data
@@ -88,6 +89,36 @@ class TestFlowDecorator:
         assert flow_data.is_async is False
         assert flow_data.is_generator is True
 
+    def test_get_flow_data_invalid_function(self):
+        """Test get_flow_data with non-flow function raises error."""
+
+        def regular_function():
+            pass
+
+        from waypoint.exceptions import InvalidFlowError
+
+        with pytest.raises(InvalidFlowError):
+            get_flow_data(regular_function)
+
+    def test_is_flow_with_flow_function(self):
+        """Test is_flow returns True for decorated functions."""
+        from waypoint.flows import is_flow
+
+        @flow
+        def flow_function():
+            pass
+
+        assert is_flow(flow_function) is True
+
+    def test_is_flow_with_regular_function(self):
+        """Test is_flow returns False for regular functions."""
+        from waypoint.flows import is_flow
+
+        def regular_function():
+            pass
+
+        assert is_flow(regular_function) is False
+
 
 class TestFlowExecution:
     """Test flow execution behavior."""
@@ -142,7 +173,7 @@ class TestFlowExecution:
         result = asyncio.run(collect_results())
         assert result == [0, 3, 6]
 
-    def test_flow_exception_propagation(self):
+    def test_sync_flow_exception_propagation(self):
         """Test that exceptions in flows are properly propagated."""
 
         @flow
@@ -151,6 +182,19 @@ class TestFlowExecution:
 
         with pytest.raises(ValueError, match="Flow failed"):
             failing_flow()
+
+    def test_sync_generator_flow_exception_propagation(self):
+        """Test that exceptions in generator flows are properly propagated."""
+
+        @flow
+        def failing_generator_flow() -> Generator[int, None, None]:
+            yield 1
+            raise ValueError("Generator flow failed")
+
+        gen = failing_generator_flow()
+        assert next(gen) == 1
+        with pytest.raises(FlowRunError, match="Generator flow failed"):
+            next(gen)
 
     def test_async_flow_exception_propagation(self):
         """Test that exceptions in async flows are properly propagated."""
@@ -162,6 +206,45 @@ class TestFlowExecution:
 
         with pytest.raises(ValueError, match="Async flow failed"):
             asyncio.run(async_failing_flow())
+
+    def test_async_generator_flow_exception_propagation(self):
+        """Test that exceptions in async generator flows are properly propagated."""
+
+        @flow
+        async def async_failing_generator_flow() -> AsyncGenerator[int, None]:
+            yield 1
+            await asyncio.sleep(0.01)
+            raise ValueError("Async generator flow failed")
+
+        async def run_gen():
+            gen = async_failing_generator_flow()
+            value = await gen.__anext__()
+            assert value == 1
+            await gen.__anext__()
+
+        with pytest.raises(FlowRunError, match="Async generator flow failed"):
+            asyncio.run(run_gen())
+
+    def test_flow_with_no_return(self):
+        """Test flow that does not return a value."""
+
+        @flow
+        def no_return_flow(x: int) -> None:
+            return
+
+        result = no_return_flow(5)
+        assert result is None
+
+    def test_async_flow_with_no_return(self):
+        """Test async flow that does not return a value."""
+
+        @flow
+        async def async_no_return_flow(x: int) -> None:
+            await asyncio.sleep(0.01)
+            return
+
+        result = asyncio.run(async_no_return_flow(5))
+        assert result is None
 
 
 class TestFlowWithTasks:
@@ -228,6 +311,57 @@ class TestFlowWithTasks:
 
         result = parallel_squares_flow([1, 2, 3, 4])
         assert result == [1, 4, 9, 16]
+
+    def test_flow_with_mixed_tasks(self):
+        """Test a flow that mixes sync and async tasks."""
+
+        @task
+        def sync_task(x: int) -> int:
+            return x + 1
+
+        @task
+        async def async_task(x: int) -> int:
+            await asyncio.sleep(0.001)
+            return x * 2
+
+        @flow
+        async def mixed_flow(x: int) -> int:
+            step1 = sync_task(x)
+            step2 = await async_task(step1)
+            return step2
+
+        result = asyncio.run(mixed_flow(3))
+        assert result == 8
+
+    def test_sync_flow_from_inside_sync_task_error(self):
+        """Test that calling a sync flow from inside a sync task raises an error."""
+
+        @flow
+        def inner_flow(x: int) -> int:
+            return x * 2
+
+        @task
+        def calling_task(x: int) -> int:
+            # This should raise an error
+            return inner_flow(x)
+
+        with pytest.raises(RuntimeError, match="Cannot start a flow run context within a task"):
+            calling_task(5)
+
+    def test_async_flow_from_inside_sync_task_error(self):
+        """Test that calling an async flow from inside a sync task raises an error."""
+
+        @flow
+        async def inner_async_flow(x: int) -> int:
+            return x * 2
+
+        @task
+        def calling_task(x: int) -> int:
+            # This should raise an error
+            return asyncio.run(inner_async_flow(x))
+
+        with pytest.raises(RuntimeError, match="Cannot start a flow run context within a task"):
+            calling_task(5)
 
 
 class TestFlowParameterBinding:
@@ -404,37 +538,3 @@ class TestFlowSession:
 
         assert outer_result == 6  # 5 + 1
         assert inner_result == 11  # 10 + 1
-
-
-class TestFlowErrorHandling:
-    """Test flow error handling and edge cases."""
-
-    def test_get_flow_data_invalid_function(self):
-        """Test get_flow_data with non-flow function raises error."""
-
-        def regular_function():
-            pass
-
-        from waypoint.exceptions import InvalidFlowError
-
-        with pytest.raises(InvalidFlowError):
-            get_flow_data(regular_function)
-
-    def test_is_flow_with_flow_function(self):
-        """Test is_flow returns True for decorated functions."""
-        from waypoint.flows import is_flow
-
-        @flow
-        def flow_function():
-            pass
-
-        assert is_flow(flow_function) is True
-
-    def test_is_flow_with_regular_function(self):
-        """Test is_flow returns False for regular functions."""
-        from waypoint.flows import is_flow
-
-        def regular_function():
-            pass
-
-        assert is_flow(regular_function) is False

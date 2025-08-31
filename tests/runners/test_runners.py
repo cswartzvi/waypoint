@@ -9,6 +9,7 @@ import pytest
 from waypoint import flow
 from waypoint import submit_task
 from waypoint import task
+from waypoint.exceptions import TaskRunError
 from waypoint.flows import flow_session
 from waypoint.runners import get_task_runner
 from waypoint.runners.sequential import SequentialTaskRunner
@@ -232,12 +233,12 @@ class TestTaskRunnerExceptionHandling:
 
         # Test with sequential runner
         with flow_session(name="sync_fail_sequential", task_runner="sequential"):
-            with pytest.raises(ValueError, match="Sync task failed"):
+            with pytest.raises(TaskRunError, match="Sync task failed"):
                 failing_sync_task()
 
         # Test with threading runner
         with flow_session(name="sync_fail_threading", task_runner="threading"):
-            with pytest.raises(ValueError, match="Sync task failed"):
+            with pytest.raises(TaskRunError, match="Sync task failed"):
                 failing_sync_task()
 
     def test_async_task_exceptions_with_runners(self):
@@ -267,13 +268,13 @@ class TestTaskRunnerExceptionHandling:
 
         # Test with sequential runner (should fail on submission)
         with flow_session(name="submit_fail_sequential", task_runner="sequential"):
-            with pytest.raises(ConnectionError, match="Submitted task failed"):
+            with pytest.raises(TaskRunError, match="Submitted task failed"):
                 future = submit_task(failing_submitted_task)
 
         # Test with threading runner
         with flow_session(name="submit_fail_threading", task_runner="threading"):
             future = submit_task(failing_submitted_task)
-            with pytest.raises(ConnectionError, match="Submitted task failed"):
+            with pytest.raises(TaskRunError, match="Submitted task failed"):
                 future.result()
 
 

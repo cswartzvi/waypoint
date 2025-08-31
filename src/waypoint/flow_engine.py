@@ -21,6 +21,7 @@ from typing import (
 
 from waypoint.context import FlowRunContext
 from waypoint.context import TaskRunContext
+from waypoint.exceptions import FlowRunError
 from waypoint.flow_run import FlowRun
 from waypoint.flows import FlowData
 from waypoint.hooks.manager import get_hook_manager
@@ -162,10 +163,8 @@ class BaseFlowRunEngine(Generic[P, R]):
         """
         from waypoint.hooks.manager import try_run_hook
 
-        if "flow_data" not in kwargs:
-            kwargs["flow_data"] = self.flow_data
-        if "flow_run" not in kwargs:
-            kwargs["flow_run"] = self.flow_run
+        kwargs.setdefault("flow_data", self.flow_data)
+        kwargs.setdefault("flow_run", self.flow_run)
         try_run_hook(self._hook_manager, hook_name, **kwargs)
 
 
@@ -253,7 +252,7 @@ class SyncGeneratorFlowRunEngine(_BaseSyncFlowRunEngine[P, Generator[R, None, No
                 self.process(item, iteration=idx)
                 yield item
         except Exception as exception:
-            error = exception
+            error = FlowRunError(f"Error during flow run: {exception}", exc=exception)
         finally:
             self._run_hook("after_flow_run", result=None, error=error)
             if error:
@@ -332,7 +331,7 @@ class _AsyncGeneratorFlowRunEngine(_BaseAsyncFlowRunEngine[P, AsyncGenerator[R, 
 
     async def call(self) -> AsyncGenerator[R, None]:
         """Calls the flow function with the provided parameters."""
-        if not self._initialized:  # p ragma: no cover
+        if not self._initialized:  # pragma: no cover
             raise RuntimeError("Flow run engine must be initialized before starting context.")
 
         self._run_hook("before_flow_run")
@@ -343,8 +342,8 @@ class _AsyncGeneratorFlowRunEngine(_BaseAsyncFlowRunEngine[P, AsyncGenerator[R, 
                 self._run_hook("after_flow_iteration", result=item, index=idx)
                 await self.process(item, iteration=idx)
                 yield item
-        except Exception as exc:
-            error = exc
+        except Exception as exception:
+            error = FlowRunError(f"Error during flow run: {exception}", exc=exception)
         finally:
             self._run_hook("after_flow_run", result=None, error=error)
             if error:
