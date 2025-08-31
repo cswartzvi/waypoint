@@ -37,7 +37,7 @@ jobs:
         run: uv run pre-commit run --all-files
 
       - name: Run Tests
-        run: uv run pytest --cov=waypoint --cov-report=xml --cov-report=term
+        run: uv run pytest --cov=waypoint --cov-branch --cov-report=xml --cov-report=term
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
