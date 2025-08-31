@@ -30,8 +30,15 @@ def initialize_hooks() -> None:
 def get_hook_manager() -> PluginManager:
     """Returns initialized hook plugin manager or raises an exception."""
     hook_context = HooksContext.get()
-    if not hook_context:
-        raise RuntimeError("Attempted access of Hook plugin manager without initialization.")
+    if not hook_context:  # pragma: no cover
+        # NOTE: This should not happen in normal practice since we initialize hooks at the
+        # top-level waypoint/__init__.py module. However, it could happen if a distributed
+        # runner is used without proper initialization.
+        raise RuntimeError(
+            "Attempted access of Hook plugin manager without initialization. "
+            "Normally this happens when `initialize_hooks()` has not been called. "
+            "Please report this if you continue to see this error."
+        )
     hook_manager = hook_context.manager
     assert hook_manager is not None
     return hook_manager

@@ -250,7 +250,7 @@ def submit_task(task: Callable[..., Any], *args, **kwargs) -> TaskFuture[Any]:
     # and the hook would be redundant.
     if not isinstance(task_runner, SequentialTaskRunner):
         hook_manager = get_hook_manager()
-        if hook := getattr(hook_manager.hook, "before_task_submit", None):
+        if hook := getattr(hook_manager.hook, "before_task_submit", None):  # pragma: no branch
             hook(task_data=task_data, task_run=task_run, runner=task_runner)
 
     return task_runner.submit(wrapper)

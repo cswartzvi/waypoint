@@ -1,9 +1,11 @@
 import inspect
-from typing import Any, Callable, TypeVar
+from collections.abc import Coroutine
+from typing import Any, Callable, ParamSpec, TypeVar
 
 from waypoint.exceptions import ParameterBindError
 from waypoint.exceptions import SignatureMismatchError
 
+P = ParamSpec("P")
 R = TypeVar("R")
 
 
@@ -198,7 +200,7 @@ def get_function_name(fn: Callable[..., Any]) -> str:
     """
     if hasattr(fn, "__qualname__"):
         return fn.__qualname__
-    elif hasattr(fn, "__name__"):
+    elif hasattr(fn, "__name__"):  # pragma: no cover
         return fn.__name__
     else:
         return str(fn)

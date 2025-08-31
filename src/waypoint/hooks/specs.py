@@ -36,7 +36,7 @@ class FlowSpec:
             flow_data (waypoint.flows.FlowData): Metadata related to the underlying flow.
             flow_run (waypoint.flows.FlowRune): Context related data about the current flow run.
         """
-        pass
+        ...
 
     @hook_spec
     def after_flow_iteration(
@@ -53,7 +53,7 @@ class FlowSpec:
             result (Any): Result of the current iteration.
             index (int): Current iteration index.
         """
-        pass
+        ...
 
     @hook_spec
     def after_flow_run(
@@ -72,7 +72,7 @@ class FlowSpec:
             error (Exception, optional): Exception that occurred during the flow execution, if any.
             result (Any): The result of the flow execution.
         """
-        pass
+        ...
 
     @hook_spec
     def after_result_handling(self, flow_data: FlowData, flow_run: FlowRun, result: Any) -> None:
@@ -84,7 +84,7 @@ class FlowSpec:
             flow_run (waypoint.flows.FlowRune): Context related data about the current flow run.
             result (Any): The result of the flow execution.
         """
-        pass
+        ...
 
 
 class TaskSpec:
@@ -102,7 +102,7 @@ class TaskSpec:
             task_run (waypoint.tasks.TaskRun): Details about current task execution.
             runner (waypoint.runners.base.BaseTaskRunner): Task runner that will execute the task.
         """
-        pass
+        ...
 
     @hook_spec
     def after_task_iteration(
@@ -117,7 +117,7 @@ class TaskSpec:
             result (Any): Result of the current iteration.
             index (int): Current iteration index.
         """
-        pass
+        ...
 
     @hook_spec
     def before_task_run(self, task_data: TaskData, task_run: TaskRun) -> None:
@@ -128,7 +128,7 @@ class TaskSpec:
             task_data (waypoint.tasks.TaskData): Metadata related to the underlying task.
             task_run (waypoint.tasks.TaskRun): Details about current task execution.
         """
-        pass
+        ...
 
     @hook_spec
     def after_task_run(
@@ -147,7 +147,7 @@ class TaskSpec:
             error (Exception, optional): Exception that occurred during the task execution, if any.
             result (Any): The result of the task execution.
         """
-        pass
+        ...
 
     @hook_spec
     def after_result_handling(self, task_data: TaskData, task_run: TaskRun, result: object) -> None:
@@ -159,19 +159,5 @@ class TaskSpec:
             task_run (waypoint.tasks.TaskRun): Details about current task execution.
             result (Any): The result of the task execution.
         """
-        pass
+        ...
 
-
-def try_run_hook(manager: PluginManager, hook_name: str, **kwargs: Any) -> None:
-    """
-    Tries to run a specified hook, with the provided arguments if it exists.
-
-    Note that this function is intended for internal use only.
-
-    Args:
-        manager (Any): The hook manager containing the hooks.
-        hook_name (str): The name of the hook to run.
-        **kwargs (Any): Keyword arguments to pass to the hook.
-    """
-    if hook := getattr(manager.hook, hook_name, None):
-        hook(**kwargs)
