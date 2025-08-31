@@ -164,7 +164,7 @@ class TestFunctionIntrospection:
 
     def test_get_function_name_with_lambda(self):
         """Test get_function_name with lambda function."""
-        lambda_func = lambda x: x + 1
+        lambda_func = lambda x: x + 1  # noqa: E731
         name = get_function_name(lambda_func)
         assert "lambda" in name or "<lambda>" in name
 
