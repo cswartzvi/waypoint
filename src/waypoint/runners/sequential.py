@@ -7,6 +7,7 @@ from typing_extensions import Self, override
 
 from waypoint.futures import TaskFuture
 from waypoint.runners.base import BaseTaskRunner
+from waypoint.runners.base import DefaultTaskRunners
 
 
 class SequentialTaskRunner(BaseTaskRunner):
@@ -16,7 +17,7 @@ class SequentialTaskRunner(BaseTaskRunner):
     This task runner executes tasks one at a time in the order they are submitted.
     """
 
-    type: ClassVar[str] = "sequential"
+    type: ClassVar[str] = DefaultTaskRunners[0]
 
     @override
     def duplicate(self) -> Self:

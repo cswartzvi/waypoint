@@ -11,8 +11,10 @@ from waypoint.logging import get_logger
 
 R = TypeVar("R")
 
-ReturnWhen = Literal["FIRST_COMPLETED", "FIRST_EXCEPTION", "ALL_COMPLETED"]
-
+# NOTE: These are the default task runner types. Custom task runners can use any string
+# identifier they want, but these are the ones built into Waypoint.
+DefaultTaskRunner = Literal["sequential", "threading", "multiprocessing"]
+DefaultTaskRunners: list[DefaultTaskRunner] = ["sequential", "threading", "multiprocessing"]
 
 class EventLike(Protocol):
     """

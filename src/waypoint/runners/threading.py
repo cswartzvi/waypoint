@@ -14,6 +14,7 @@ from typing_extensions import Self, override
 from waypoint.exceptions import TaskRunError
 from waypoint.futures import TaskFuture
 from waypoint.runners.base import BaseTaskRunner
+from waypoint.runners.base import DefaultTaskRunners
 from waypoint.runners.base import EventLike
 from waypoint.runners.base import log_execution
 
@@ -40,7 +41,7 @@ class ThreadingTaskRunner(BaseTaskRunner):
             A tuple of arguments that will be passed to the initializer as positional arguments.
     """
 
-    type: ClassVar[str] = "threading"
+    type: ClassVar[str] = DefaultTaskRunners[1]
 
     def __init__(
         self,

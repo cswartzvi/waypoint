@@ -1,15 +1,14 @@
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from waypoint.runners.base import BaseTaskRunner
+    from waypoint.runners.base import DefaultTaskRunner
 else:
     BaseTaskRunner = object
+    DefaultTaskRunner = object
 
 
-DefaultTaskRunners = Literal["sequential", "concurrent", "parallel"]
-
-
-def get_task_runner(type_: DefaultTaskRunners | str | BaseTaskRunner) -> "BaseTaskRunner":
+def get_task_runner(type_: DefaultTaskRunner | str | BaseTaskRunner) -> "BaseTaskRunner":
     """Look up a task runner based on their type attribute."""
     # NOTE: We must import the runners here in order for them to be discovered.
     from waypoint.runners.base import BaseTaskRunner
