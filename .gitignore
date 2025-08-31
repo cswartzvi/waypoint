@@ -1,3 +1,8 @@
+# Additional files to ignore
+
+# Because this project is a library, we ignore the lock file
+uv.lock
+
 # Created by https://www.toptal.com/developers/gitignore/api/direnv,python,visualstudiocode,pycharm
 # Edit at https://www.toptal.com/developers/gitignore?templates=direnv,python,visualstudiocode,pycharm
 
@@ -292,11 +297,11 @@ pyrightconfig.json
 
 ### VisualStudioCode ###
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+# !.vscode/settings.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+# !.vscode/extensions.json
+# !.vscode/*.code-snippets
 
 # Local History for Visual Studio Code
 .history/
