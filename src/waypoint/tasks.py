@@ -9,10 +9,10 @@ from waypoint.futures import TaskFuture
 
 if TYPE_CHECKING:
     from waypoint.runners import BaseTaskRunner
-    from waypoint.runners import DefaultTaskRunners
+    from waypoint.runners import DefaultTaskRunner
 else:
     BaseTaskRunner = Any
-    DefaultTaskRunners = Any
+    DefaultTaskRunner = Any
 
 
 R = TypeVar("R")

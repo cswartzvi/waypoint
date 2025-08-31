@@ -13,10 +13,10 @@ from typing import (
 
 if TYPE_CHECKING:
     from waypoint.runners import BaseTaskRunner
-    from waypoint.runners import DefaultTaskRunners
+    from waypoint.runners import DefaultTaskRunner
 else:
     BaseTaskRunner = object
-    DefaultTaskRunners = object
+    DefaultTaskRunner = object
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -33,7 +33,7 @@ def flow(
     __func: None = None,
     *,
     name: str | None = None,
-    task_runner: BaseTaskRunner | DefaultTaskRunners | str | None = None,
+    task_runner: BaseTaskRunner | DefaultTaskRunner | str | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -41,7 +41,7 @@ def flow(
     __func: Callable[..., Any] | None = None,
     *,
     name: str | None = None,
-    task_runner: BaseTaskRunner | DefaultTaskRunners | str | None = None,
+    task_runner: BaseTaskRunner | DefaultTaskRunner | str | None = None,
 ) -> Callable[..., Any] | Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Wraps a callable as a workflow - the orchestration layer of the Waypoint framework.
@@ -129,7 +129,7 @@ def flow(
 @contextmanager
 def flow_session(
     name: str = "waypoint-flow-session",
-    task_runner: BaseTaskRunner | DefaultTaskRunners | str = "sequential",
+    task_runner: BaseTaskRunner | DefaultTaskRunner | str = "sequential",
 ):
     """
     Creates an interactive flow session context.
