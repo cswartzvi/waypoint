@@ -5,7 +5,7 @@
 # ]
 # ///
 
-import nox  # type: ignore
+import nox  # pyright: ignore
 
 nox.options.default_venv_backend = "uv"
 # nox.options.envdir = ".cache"
