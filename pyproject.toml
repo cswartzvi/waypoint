@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Workflow orchestration library."
 readme = "README.md"
 authors = [{ name = "Charles Swartz", email = "charles.w.swartz.vi@gmail.com" }]
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "cloudpickle>=3.1.1",
     "pluggy>=1.6.0",
