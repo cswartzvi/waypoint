@@ -16,6 +16,7 @@ R = TypeVar("R")
 DefaultTaskRunner = Literal["sequential", "threading", "multiprocessing"]
 DefaultTaskRunners: list[DefaultTaskRunner] = ["sequential", "threading", "multiprocessing"]
 
+
 class EventLike(Protocol):
     """
     A protocol for an event-like object.

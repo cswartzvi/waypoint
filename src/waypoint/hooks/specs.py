@@ -6,8 +6,6 @@ For more information, please seettps://pluggy.readthedocs.io/en/stable/#specs
 
 from typing import TYPE_CHECKING, Any
 
-from pluggy import PluginManager
-
 from waypoint.runners.base import BaseTaskRunner
 
 from .markers import hook_spec
@@ -160,4 +158,3 @@ class TaskSpec:
             result (Any): The result of the task execution.
         """
         ...
-

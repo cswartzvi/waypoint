@@ -1,5 +1,4 @@
 import inspect
-from collections.abc import Coroutine
 from typing import Any, Callable, ParamSpec, TypeVar
 
 from waypoint.exceptions import ParameterBindError

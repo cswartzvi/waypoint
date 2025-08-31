@@ -120,4 +120,3 @@ class TestTaskHooks:
         assert "before_task_submit called - test_session.sample_task-1" == plugin.lines[0]
         assert "before_task_run called - test_session.sample_task-1" == plugin.lines[1]
         assert "after_task_run called - test_session.sample_task-1" == plugin.lines[2]
-

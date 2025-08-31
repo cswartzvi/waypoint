@@ -17,7 +17,6 @@ else:
 
 
 class EchoPlugin:
-
     def __init__(self) -> None:
         self.lines: list[str] = []
 

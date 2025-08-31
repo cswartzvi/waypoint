@@ -7,7 +7,7 @@ import pytest
 
 from waypoint import flow
 from waypoint import task
-from waypoint.exceptions import FlowRunError, TaskRunError
+from waypoint.exceptions import FlowRunError
 from waypoint.flows import FlowData
 from waypoint.flows import flow_session
 from waypoint.flows import get_flow_data

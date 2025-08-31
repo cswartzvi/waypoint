@@ -6,7 +6,6 @@ from waypoint.exceptions import MissingContextError
 from waypoint.flows import flow_session
 from waypoint.logging import get_logger
 from waypoint.logging import get_run_logger
-from waypoint.logging import patch_print
 from waypoint.tasks import task
 
 
@@ -51,6 +50,7 @@ class TestRungLogger:
 
     def test_get_run_logger_inside_task_context(self) -> None:
         """Test getting the run logger inside a task context."""
+
         @task
         def test_task():
             logger = get_run_logger()
