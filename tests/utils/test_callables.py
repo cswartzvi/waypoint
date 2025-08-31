@@ -149,6 +149,38 @@ class TestFunctionIntrospection:
         summary = get_docstring_summary(empty_doc_func)
         assert summary == ""
 
+    def test_get_function_name_with_callable_object_no_name_attrs(self):
+        """Test get_function_name with callable object lacking __name__ and __qualname__."""
+
+        class CallableWithoutNameAttrs:
+            def __call__(self, x):
+                return x * 2
+
+        callable_obj = CallableWithoutNameAttrs()
+        name = get_function_name(callable_obj)
+        # Should fall back to str() representation
+        assert "CallableWithoutNameAttrs" in name
+        assert "object at" in name
+
+    def test_get_function_name_with_lambda(self):
+        """Test get_function_name with lambda function."""
+        lambda_func = lambda x: x + 1
+        name = get_function_name(lambda_func)
+        assert "lambda" in name or "<lambda>" in name
+
+    def test_get_function_name_with_partial_function(self):
+        """Test get_function_name with functools.partial."""
+        from functools import partial
+
+        def multiply(x, y):
+            return x * y
+
+        partial_func = partial(multiply, 2)
+        name = get_function_name(partial_func)
+        # partial objects typically have __name__ but test the fallback case
+        assert isinstance(name, str)
+        assert len(name) > 0
+
 
 class TestParameterHandling:
     """Test parameter binding and argument handling."""
