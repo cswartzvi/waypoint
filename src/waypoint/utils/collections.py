@@ -26,7 +26,7 @@ def is_iterable(obj: Any) -> bool:
 
 def ensure_iterable(obj: T | Iterable[T]) -> Collection[T]:
     """Ensure that an object is returned as an iterable collection."""
-    if isinstance(obj, Sequence) or isinstance(obj, set):
+    if is_iterable(obj):
         return cast(Collection[T], obj)
     obj = cast(T, obj)  # No longer in the iterable case
     return [obj]
