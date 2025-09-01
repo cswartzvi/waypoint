@@ -16,7 +16,7 @@ def lenient_issubclass(cls: type, class_or_tuple: type | tuple[type, ...]) -> bo
         return False
 
 
-def iter_subclasses(cls: type) -> Iterator[type]:
+def iter_subclasses(cls: type[T]) -> Iterator[type[T]]:
     """Iterate over all subclasses of a class."""
     for sub in cls.__subclasses__():
         yield sub
@@ -25,6 +25,7 @@ def iter_subclasses(cls: type) -> Iterator[type]:
 
 def get_subclass(cls: type, key: Callable[[type], bool]) -> type:
     """Get the first subclass of a class that matches a key function."""
+    sub: type
     for sub in iter_subclasses(cls):
         if key(sub):
             return sub
