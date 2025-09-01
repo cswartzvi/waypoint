@@ -96,7 +96,7 @@ class ThreadingTaskRunner(BaseTaskRunner):
 
         future: concurrent.futures.Future[Any]
         if inspect.iscoroutinefunction(func):
-            future = self._executor.submit(context_run, asyncio.run(func()))
+            future = self._executor.submit(context_run, asyncio.run, func())
         else:
             future = self._executor.submit(context_run, func)
 
