@@ -14,6 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 rich = [
     "rich>=14.0.0",
+    "typing-extensions; python_version < '3.12'",
 ]
 
 [build-system]
@@ -30,8 +31,8 @@ dev = [
     "pytest-asyncio",
     "pytest-cov",
     "pytest-mock",
+    "pyrefly",
     "ruff",
-    "typing-extensions; python_version < '3.12'",
 ]
 
 # [[tool.uv.index]]
