@@ -34,6 +34,7 @@ def flow(
     *,
     name: str | None = None,
     task_runner: BaseTaskRunner | DefaultTaskRunner | str | None = None,
+    log_prints: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -42,6 +43,7 @@ def flow(
     *,
     name: str | None = None,
     task_runner: BaseTaskRunner | DefaultTaskRunner | str | None = None,
+    log_prints: bool = False,
 ) -> Callable[..., Any] | Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Wraps a callable as a workflow - the orchestration layer of the Waypoint framework.
@@ -61,6 +63,8 @@ def flow(
             Name for the workflow. If not provided, the function's name is used.
         task_runner (BaseTaskRunner | DefaultTaskRunners | str, optional):
             Task runner to use for executing tasks in the workflow. Defaults to "sequential".
+        log_prints (bool, optional):
+            Whether to log print statements during the flow run. Defaults to False.
     """
     from waypoint.flow_engine import run_flow_async
     from waypoint.flow_engine import run_flow_sync
@@ -78,6 +82,7 @@ def flow(
             task_runner=get_task_runner(task_runner if task_runner else "sequential"),
             is_async=is_asynchronous(func),
             is_generator=is_generator(func),
+            log_prints=log_prints,
         )
 
         # Common engine API parameters
@@ -130,6 +135,7 @@ def flow(
 def flow_session(
     name: str = "waypoint-flow-session",
     task_runner: BaseTaskRunner | DefaultTaskRunner | str = "sequential",
+    log_prints: bool = False,
 ):
     """
     Creates an interactive flow session context.
@@ -142,6 +148,8 @@ def flow_session(
             Name for the temporary flow session. Defaults to "waypoint-flow-session".
         task_runner (BaseTaskRunner | DefaultTaskRunners | str, optional):
             Task runner to use for executing tasks in the flow session. Defaults to "sequential".
+        log_prints (bool, optional):
+            Whether to log print statements during the flow run. Defaults to False.
 
     Yields:
         None

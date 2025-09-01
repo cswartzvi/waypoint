@@ -31,6 +31,7 @@ def task(
     __func: None = None,
     *,
     name: str | None = None,
+    log_prints: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -38,6 +39,7 @@ def task(
     __func: Callable[..., Any] | None = None,
     *,
     name: str | None = None,
+    log_prints: bool = False,
 ) -> Callable[..., Any] | Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Wraps a callable as a workflow - the orchestration layer of the Waypoint framework.
@@ -57,6 +59,8 @@ def task(
             Name for the workflow. If not provided, the function's name is used.
         task_runner (BaseTaskRunner | DefaultTaskRunners | str, optional):
             Task runner to use for executing tasks in the workflow. Defaults to "sequential".
+        log_prints (bool, optional):
+            Whether to log print statements during the task run. Defaults to False.
     """
     from waypoint.task_engine import run_generator_task_async
     from waypoint.task_engine import run_generator_task_sync
@@ -75,6 +79,7 @@ def task(
             name=task_name,
             is_async=is_asynchronous(func),
             is_generator=is_generator(func),
+            log_prints=log_prints,
             _original_function=func,
         )
 
