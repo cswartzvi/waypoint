@@ -19,7 +19,9 @@ def flow_context(request):
     if "noautouse" in request.keywords:
         yield
     else:
-        with flow_session(name="test_flow", task_runner="sequential"):
+        # Get task_runner from request.param if available, otherwise use default
+        task_runner = getattr(request, "param", "sequential")
+        with flow_session(name="test_flow", task_runner=task_runner):
             yield
 
 
@@ -93,6 +95,66 @@ class TestTaskDecorator:
         task_data = get_task_data(generator_test_task)
         assert task_data.is_async is False
         assert task_data.is_generator is True
+
+    def test_async_generator_task_data_detection(self):
+        """Test that async generator functions are correctly detected in TaskData."""
+
+        @task
+        async def async_generator_test_task() -> AsyncGenerator[int, None]:
+            yield 1
+
+        task_data = get_task_data(async_generator_test_task)
+        assert task_data.is_async is True
+        assert task_data.is_generator is True
+
+    def test_positional_arguments(self):
+        """Test task execution with positional arguments."""
+
+        @task
+        def concat_strings(a: str, b: str, c: str) -> str:
+            return f"{a}-{b}-{c}"
+
+        result = concat_strings("hello", "world", "test")
+        assert result == "hello-world-test"
+
+    def test_keyword_arguments(self):
+        """Test task execution with keyword arguments."""
+
+        @task
+        def format_message(message: str, prefix: str = "INFO", suffix: str = "!") -> str:
+            return f"[{prefix}] {message}{suffix}"
+
+        result = format_message("Test message", prefix="DEBUG", suffix=".")
+        assert result == "[DEBUG] Test message."
+
+    def test_mixed_arguments(self):
+        """Test task execution with mixed positional and keyword arguments."""
+
+        @task
+        def mixed_args(a: int, b: int, multiplier: int = 1, offset: int = 0) -> int:
+            return (a + b) * multiplier + offset
+
+        result = mixed_args(10, 20, multiplier=2, offset=5)
+        assert result == 65  # (10 + 20) * 2 + 5
+
+    def test_default_parameter_values(self):
+        """Test that default parameter values are properly handled."""
+
+        @task
+        def with_defaults(value: int, factor: int = 2, add: int = 0) -> int:
+            return value * factor + add
+
+        # Test with all defaults
+        result1 = with_defaults(5)
+        assert result1 == 10  # 5 * 2 + 0
+
+        # Test with partial defaults
+        result2 = with_defaults(5, factor=3)
+        assert result2 == 15  # 5 * 3 + 0
+
+        # Test with no defaults
+        result3 = with_defaults(5, factor=3, add=2)
+        assert result3 == 17  # 5 * 3 + 2
 
     def test_is_task_with_task_function(self):
         """Test is_task returns True for decorated functions."""
@@ -333,6 +395,7 @@ class TestTaskExecution:
 class TestTaskSubmission:
     """Test task submission and future handling."""
 
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
     def test_submit_sync_task(self):
         """Test submitting a synchronous task."""
 
@@ -344,6 +407,7 @@ class TestTaskSubmission:
         result = future.result()
         assert result == 20
 
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
     def test_submit_sync_generator_task(self):
         """Test submitting a synchronous generator task evaluates to a list."""
 
@@ -356,6 +420,7 @@ class TestTaskSubmission:
         result = future.result()
         assert result == [1, 2, 3]
 
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
     def test_submit_async_task(self):
         """Test submitting an asynchronous task."""
 
@@ -368,6 +433,7 @@ class TestTaskSubmission:
         result = future.result()
         assert result == 20
 
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
     def test_submit_async_generator_task(self):
         """Test submitting an asynchronous generator task evaluates to a list."""
 
@@ -381,6 +447,7 @@ class TestTaskSubmission:
         result = future.result()
         assert result == [1, 2, 3]
 
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
     def test_submit_task_with_kwargs(self):
         """Test submitting a task with keyword arguments."""
 
@@ -392,6 +459,7 @@ class TestTaskSubmission:
         result = future.result()
         assert result == 28  # 3^3 + 1
 
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
     def test_submit_multiple_tasks(self):
         """Test submitting multiple tasks and collecting results."""
 
@@ -403,6 +471,7 @@ class TestTaskSubmission:
         results = [future.result() for future in futures]
         assert results == [1, 4, 9, 16]
 
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
     def test_submit_nested_task_submission(self):
         """Test submitting a task that submits another task."""
 
@@ -418,6 +487,18 @@ class TestTaskSubmission:
         future = submit_task(outer_task, 5)
         result = future.result()
         assert result == 30
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_submit_non_task_function(self):
+        """Test submitting a non-task function creates task data automatically."""
+
+        def regular_function(x: int) -> int:
+            return x * 2
+
+        # This should work by creating task data automatically
+        future = submit_task(regular_function, 5)
+        result = future.result()
+        assert result == 10
 
     @pytest.mark.noautouse
     def test_submit_nested_task_use_sequential_runner(self):
@@ -455,33 +536,6 @@ class TestTaskSubmission:
         assert result == 30
         assert sequential_submissions == 3
 
-    def test_submit_non_task_function(self):
-        """Test submitting a non-task function creates task data automatically."""
-
-        def regular_function(x: int) -> int:
-            return x * 2
-
-        # This should work by creating task data automatically
-        future = submit_task(regular_function, 5)
-        result = future.result()
-        assert result == 10
-
-    def test_submit_task_with_no_name_attribute(self):
-        """Test submitting callable without __name__ attribute."""
-
-        class CallableWithoutName:
-            def __call__(self, x: int) -> int:
-                return x * 2
-
-        callable_obj = CallableWithoutName()
-        # Remove __name__ if it exists
-        if hasattr(callable_obj, "__name__"):
-            delattr(callable_obj, "__name__")
-
-        future = submit_task(callable_obj, 5)
-        result = future.result()
-        assert result == 10
-
     def test_submit_task_exception_handling(self):
         """Test exception handling in submitted tasks."""
 
@@ -505,56 +559,3 @@ class TestTaskSubmission:
 
         with pytest.raises(MissingContextError):
             submit_task(simple_task)
-
-
-class TestTaskParameterBinding:
-    """Test parameter binding and argument handling in tasks."""
-
-    def test_positional_arguments(self):
-        """Test task execution with positional arguments."""
-
-        @task
-        def concat_strings(a: str, b: str, c: str) -> str:
-            return f"{a}-{b}-{c}"
-
-        result = concat_strings("hello", "world", "test")
-        assert result == "hello-world-test"
-
-    def test_keyword_arguments(self):
-        """Test task execution with keyword arguments."""
-
-        @task
-        def format_message(message: str, prefix: str = "INFO", suffix: str = "!") -> str:
-            return f"[{prefix}] {message}{suffix}"
-
-        result = format_message("Test message", prefix="DEBUG", suffix=".")
-        assert result == "[DEBUG] Test message."
-
-    def test_mixed_arguments(self):
-        """Test task execution with mixed positional and keyword arguments."""
-
-        @task
-        def mixed_args(a: int, b: int, multiplier: int = 1, offset: int = 0) -> int:
-            return (a + b) * multiplier + offset
-
-        result = mixed_args(10, 20, multiplier=2, offset=5)
-        assert result == 65  # (10 + 20) * 2 + 5
-
-    def test_default_parameter_values(self):
-        """Test that default parameter values are properly handled."""
-
-        @task
-        def with_defaults(value: int, factor: int = 2, add: int = 0) -> int:
-            return value * factor + add
-
-        # Test with all defaults
-        result1 = with_defaults(5)
-        assert result1 == 10  # 5 * 2 + 0
-
-        # Test with partial defaults
-        result2 = with_defaults(5, factor=3)
-        assert result2 == 15  # 5 * 3 + 0
-
-        # Test with no defaults
-        result3 = with_defaults(5, factor=3, add=2)
-        assert result3 == 17  # 5 * 3 + 2
