@@ -8,9 +8,11 @@ import pytest
 from waypoint import flow
 from waypoint import task
 from waypoint.exceptions import FlowRunError
+from waypoint.exceptions import TaskRunError
 from waypoint.flows import FlowData
 from waypoint.flows import flow_session
 from waypoint.flows import get_flow_data
+from waypoint.tasks import submit_task
 
 
 @pytest.fixture(autouse=True)
@@ -520,10 +522,6 @@ class TestFlowWithTasks:
             calling_task(5)
 
 
-class TestFlowParameterBinding:
-    """Test parameter binding and argument handling in flows."""
-
-
 class TestFlowSession:
     """Test flow session functionality."""
 
@@ -580,3 +578,56 @@ class TestFlowSession:
 
         assert outer_result == 6  # 5 + 1
         assert inner_result == 11  # 10 + 1
+
+    def test_sync_task_exceptions_with_runners(self):
+        """Test synchronous task exception handling with different runners."""
+
+        @task
+        def failing_sync_task() -> None:
+            raise ValueError("Sync task failed")
+
+        # Test with sequential runner
+        with flow_session(name="sync_fail_sequential", task_runner="sequential"):
+            with pytest.raises(TaskRunError, match="Sync task failed"):
+                failing_sync_task()
+
+        # Test with threading runner
+        with flow_session(name="sync_fail_threading", task_runner="threading"):
+            with pytest.raises(TaskRunError, match="Sync task failed"):
+                failing_sync_task()
+
+    def test_async_task_exceptions_with_runners(self):
+        """Test asynchronous task exception handling with different runners."""
+
+        @task
+        async def failing_async_task() -> None:
+            await asyncio.sleep(0.001)
+            raise RuntimeError("Async task failed")
+
+        # Test with sequential runner
+        with flow_session(name="async_fail_sequential", task_runner="sequential"):
+            with pytest.raises(RuntimeError, match="Async task failed"):
+                asyncio.run(failing_async_task())
+
+        # Test with threading runner
+        with flow_session(name="async_fail_threading", task_runner="threading"):
+            with pytest.raises(RuntimeError, match="Async task failed"):
+                asyncio.run(failing_async_task())
+
+    def test_submitted_task_exceptions_with_runners(self):
+        """Test exception handling in submitted tasks with different runners."""
+
+        @task
+        def failing_submitted_task() -> None:
+            raise ConnectionError("Submitted task failed")
+
+        # Test with sequential runner (should fail on submission)
+        with flow_session(name="submit_fail_sequential", task_runner="sequential"):
+            with pytest.raises(TaskRunError, match="Submitted task failed"):
+                future = submit_task(failing_submitted_task)
+
+        # Test with threading runner
+        with flow_session(name="submit_fail_threading", task_runner="threading"):
+            future = submit_task(failing_submitted_task)
+            with pytest.raises(TaskRunError, match="Submitted task failed"):
+                future.result()
