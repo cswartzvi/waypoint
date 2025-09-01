@@ -9,6 +9,8 @@ from typing_extensions import assert_type
 
 from waypoint.flows import flow
 from waypoint.futures import TaskFuture
+from waypoint.futures import as_completed
+from waypoint.futures import wait
 from waypoint.tasks import submit_task
 from waypoint.tasks import task
 
@@ -48,6 +50,13 @@ def my_sync_flow(x: int, y: int) -> int:
     futures = [submit_task(sync_task, i, i + 1) for i in range(5)]
     assert_type(futures, list[TaskFuture[int]])
 
+    done, not_done = wait(futures)
+    assert_type(done, set[TaskFuture[int]])
+    assert_type(not_done, set[TaskFuture[int]])
+
+    results = [f.result() for f in as_completed(futures)]
+    assert_type(results, list[int])
+
     future = submit_task(sync_generator_task, x, y)
     assert_type(future, TaskFuture[Iterator[int]])
 
@@ -72,6 +81,13 @@ async def my_async_flow(x: int, y: int) -> int:
 
     futures = [submit_task(sync_task, i, i + 1) for i in range(5)]
     assert_type(futures, list[TaskFuture[int]])
+
+    done, not_done = wait(futures)
+    assert_type(done, set[TaskFuture[int]])
+    assert_type(not_done, set[TaskFuture[int]])
+
+    results = [f.result() for f in as_completed(futures)]
+    assert_type(results, list[int])
 
     future = submit_task(sync_generator_task, x, y)
     assert_type(future, TaskFuture[Iterator[int]])

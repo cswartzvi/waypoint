@@ -85,7 +85,7 @@ class ThreadingTaskRunner(BaseTaskRunner):
                 "The concurrent task runner cannot be used without an event manager."
             )
 
-        if self._event.is_set():
+        if self._event.is_set():  # pragma: no cover
             # Error has already occurred, don't submit any more work
             raise TaskRunError("The concurrent task runner is shutting down.")
 

@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -14,10 +15,11 @@ import pytest
 )
 def test_typing(checker: str, subcommand: str) -> None:
     """Run the type checker on the typing test file and ensure there are no errors."""
+    file = (Path(__file__).parent / "assert_types.py").as_posix()
     if subcommand:
-        command = [checker, subcommand, "tests/typing/assert_types.py"]
+        command = [checker, subcommand, file]
     else:
-        command = [checker, "tests/typing/assert_types.py"]
+        command = [checker, file]
     result = subprocess.run(command, capture_output=True, text=True)
     print("STDOUT:", result.stdout)
     print("STDERR:", result.stderr)

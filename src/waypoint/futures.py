@@ -9,7 +9,7 @@ and cannot be used with other libraries that expect a `Future` object.
 import concurrent.futures
 from typing import Any, Generic, Iterable, Iterator, Literal, TypeVar, cast, overload
 
-from typing_extensions import override
+# from typing_extensions import override
 
 R = TypeVar("R")
 _WAIT_STATES = Literal["FIRST_COMPLETED", "ALL_COMPLETED", "FIRST_EXCEPTION"]
@@ -95,24 +95,24 @@ class TaskFuture(Generic[R]):
         return hash(self._raw_future)
 
 
-class SerializedTaskFuture(TaskFuture[R]):
-    """
-    Represents the future result of a Waypoint task that returns a serialized data.
+# class SerializedTaskFuture(TaskFuture[R]):
+#     """
+#     Represents the future result of a Waypoint task that returns a serialized data.
 
-    Args:
-        raw_future: The raw future object.
-    """
+#     Args:
+#         raw_future: The raw future object.
+#     """
 
-    def __init__(self, raw_future: concurrent.futures.Future[bytes]) -> None:
-        self._raw_future = raw_future
+#     def __init__(self, raw_future: concurrent.futures.Future[bytes]) -> None:
+#         self._raw_future = raw_future
 
-    @override
-    def result(self, timeout: float | None = None) -> R:
-        import cloudpickle
+#     @override
+#     def result(self, timeout: float | None = None) -> R:
+#         import cloudpickle
 
-        payload = self._raw_future.result(timeout)
-        result = cloudpickle.loads(payload)
-        return cast(R, result)
+#         payload = self._raw_future.result(timeout)
+#         result = cloudpickle.loads(payload)
+#         return cast(R, result)
 
 
 @overload

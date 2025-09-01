@@ -71,15 +71,6 @@ class BaseTaskRunner(metaclass=abc.ABCMeta):
         """The name of the task runner."""
         return type(self).__name__.lower().replace("taskrunner", "")
 
-    def proxy(self) -> "BaseTaskRunner":
-        """
-        Create a proxy task runner of the current task runner.
-
-        Proxies allow workers to submit tasks to the parent task runner in a nested manner,
-        possibly from distributed or out-of-process contexts.
-        """
-        return self
-
     @abc.abstractmethod
     def duplicate(self) -> Self:
         """
