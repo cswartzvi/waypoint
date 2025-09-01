@@ -15,6 +15,8 @@ on:
 
 jobs:
   test:
+    env:
+      TARGET_PYTHON: "3.13"
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -40,9 +42,10 @@ jobs:
       - name: Run Tests
         run: uv run pytest --cov=waypoint --cov-branch --cov-report=xml --cov-report=term
 
+      # Upload coverage reports to Codecov for latest Python on Ubuntu only
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
-        if: matrix.python-version == '3.12'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == env.TARGET_PYTHON
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false  # Don't fail CI if codecov is down
