@@ -6,6 +6,7 @@ from waypoint.exceptions import MissingContextError
 from waypoint.flows import flow_session
 from waypoint.logging import get_logger
 from waypoint.logging import get_run_logger
+from waypoint.logging import patch_print
 from waypoint.tasks import task
 
 
@@ -61,3 +62,55 @@ class TestRungLogger:
                 logger = get_run_logger()
                 assert logger.extra == {"flow_run_name": "session_flow"}  # type: ignore
                 test_task()
+
+
+class TestPatchPrint:
+    """Test the patch_print context manager functionality."""
+
+    def test_patch_print_disabled_by_default(self, capfd) -> None:
+        """Test that patch_print disabled doesn't affect normal print."""
+        with patch_print(enable=False):
+            print("test message")
+
+        captured = capfd.readouterr()
+        assert captured.out == "test message\n"
+        assert captured.err == ""
+
+    def test_patch_print_with_no_active_context(self, capfd) -> None:
+        """Test patch_print behavior when no flow/task context is active."""
+        with patch_print(enable=True):
+            print("no context message")
+
+        captured = capfd.readouterr()
+        assert captured.out == "no context message\n"
+
+    def test_patch_print_context_manager_behavior(self, capfd) -> None:
+        """Test that patch_print context manager properly manages print function."""
+        # Store original print
+        original_print = print
+
+        with patch_print(enable=False):
+            # print should be unchanged when disabled
+            assert print is original_print
+
+        # print should be restored after context
+        assert print is original_print
+
+    def test_patch_print_restores_print_after_exception(self, capfd) -> None:
+        """Test that patch_print restores original print even if exception occurs."""
+        original_print = print
+
+        try:
+            with patch_print(enable=True):
+                print("before exception")
+                raise ValueError("test exception")
+        except ValueError:
+            pass
+
+        # print should be restored even after exception
+        assert print is original_print
+
+        # Verify we can still print normally
+        print("after exception")
+        captured = capfd.readouterr()
+        assert "after exception\n" in captured.out
