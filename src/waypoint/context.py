@@ -16,6 +16,7 @@ from typing_extensions import Self
 
 from waypoint.runners.base import BaseTaskRunner
 from waypoint.tasks import TaskData
+from waypoint.utils.subclasses import iter_subclasses
 
 if TYPE_CHECKING:
     from waypoint.flow_run import FlowRun
@@ -137,15 +138,18 @@ FlowRunContext.model_rebuild()
 
 def serialize_context() -> dict[str, Any]:
     """Serialize the current context for use in a remote execution environment."""
-    flow_run_context = FlowRunContext.get()
-    task_run_context = TaskRunContext.get()
-    hook_context = HooksContext.get()
+    data = {}
 
-    return {
-        "flow_run_context": flow_run_context.serialize() if flow_run_context else {},
-        "task_run_context": task_run_context.serialize() if task_run_context else {},
-        "hooks_context": hook_context.serialize() if hook_context else {},
-    }
+    # Get all ContextModel subclasses and serialize their current instances
+    for subclass in iter_subclasses(ContextModel):
+        context = subclass.get()
+        if context is None:
+            continue
+        key = getattr(subclass, "__var__", None)
+        if key is not None:
+            data[key.name] = context.serialize()
+
+    return data
 
 
 @contextmanager
@@ -155,11 +159,19 @@ def hydrated_context(serialized_context: dict[str, Any] | None = None) -> Iterat
     # environment where the models are not available.
     FlowRunContext.model_rebuild()
     TaskRunContext.model_rebuild()
+    HooksContext.model_rebuild()
 
     with ExitStack() as stack:
         if serialized_context:
-            # Set up parent flow run context
-            if flow_run_context := serialized_context.get("flow_run_context"):
-                flow_run_context = FlowRunContext(**flow_run_context)
-                stack.enter_context(flow_run_context)
+            for subclass in iter_subclasses(ContextModel):
+                key = getattr(subclass, "__var__", None)
+                if key is None:
+                    continue
+
+                data = serialized_context.get(key.name)
+                if data is None:
+                    continue
+
+                instance = subclass(**data)
+                stack.enter_context(instance)
         yield
