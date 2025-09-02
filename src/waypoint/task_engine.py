@@ -204,7 +204,7 @@ class _BaseTaskRunEngine(Generic[P, R]):
 
         kwargs.setdefault("task_data", self.task_data)
         kwargs.setdefault("task_run", self.task_run)
-        try_run_hook(self._hook_manager, hook_name, **kwargs)
+        try_run_hook(manager=self._hook_manager, hook_name=hook_name, **kwargs)
 
 
 # region Engine: Sync

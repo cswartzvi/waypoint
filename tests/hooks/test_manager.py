@@ -120,7 +120,7 @@ class TestTryRunHook:
         mock_manager.hook.test_hook = mock_hook
 
         # Act
-        try_run_hook(mock_manager, "test_hook", arg1="value1", arg2="value2")
+        try_run_hook(manager=mock_manager, hook_name="test_hook", arg1="value1", arg2="value2")
 
         # Assert
         mock_hook.assert_called_once_with(arg1="value1", arg2="value2")
@@ -132,7 +132,7 @@ class TestTryRunHook:
         mock_manager.hook.missing_hook = None
 
         # Act (should not raise)
-        try_run_hook(mock_manager, "missing_hook", arg1="value1")
+        try_run_hook(manager=mock_manager, hook_name="missing_hook", arg1="value1")
 
         # Assert - no exception raised is the test
 

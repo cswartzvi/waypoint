@@ -63,17 +63,18 @@ def register_hooks_entry_points() -> None:
     hook_manager.load_setuptools_entrypoints(_PLUGIN_HOOKS)  # Despite name setuptools not required
 
 
-def try_run_hook(manager: PluginManager, hook_name: str, **kwargs: Any) -> None:
+def try_run_hook(hook_name: str, *, manager: PluginManager | None = None, **kwargs: Any) -> None:
     """
     Tries to run a specified hook, with the provided arguments if it exists.
 
     Note that this function is intended for internal use only.
 
     Args:
-        manager (Any): The hook manager containing the hooks.
         hook_name (str): The name of the hook to run.
+        manager (Any, optional): Manager containing the hooks. Defaults in-context manager.
         **kwargs (Any): Keyword arguments to pass to the hook.
     """
+    manager = manager or get_hook_manager()
     if hook := getattr(manager.hook, hook_name, None):
         hook(**kwargs)
 
