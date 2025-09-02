@@ -4,14 +4,17 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *'  # Run daily at 6 AM UTC
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
     paths:
-      - "src/**"
-      - tests/**"
-      - ".github/**"
-      - "pyproject.toml"
+      - src/**
+      - tests/**
+      - .github/**
+      - pyproject.toml
 
 jobs:
   lint:
