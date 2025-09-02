@@ -1,5 +1,7 @@
 from contextvars import ContextVar
 
+import pytest
+
 from waypoint.context import ContextModel
 from waypoint.context import hydrated_context
 from waypoint.context import serialize_context
@@ -37,6 +39,17 @@ class TestDummyContext:
             ser = ctx.serialize()
             assert ser == {"value": 5}
 
+    def test_error_with_reentrance(self):
+        with pytest.raises(RuntimeError):
+            with DummyContext(value=5) as context:
+                with context:
+                    pass
+
+    def test_error_with_exit_without_enter(self):
+        ctx = DummyContext(value=5)
+        with pytest.raises(RuntimeError):
+            ctx.__exit__()
+
 
 class TestSerializeContext:
     def test_context_serialize_default_context(self):
@@ -52,3 +65,14 @@ class TestSerializeContext:
             ctx = DummyContext.get()
             assert ctx is not None
             assert ctx.value == 5
+
+    def test_test_context_serialize_and_hydrate_no_context(self):
+        data = serialize_context()
+        with hydrated_context(data):
+            ctx = DummyContext.get()
+            assert ctx is None
+
+    def test_context_serialize_and_hydrate_no_input(self):
+        with hydrated_context(None):
+            ctx = DummyContext.get()
+            assert ctx is None

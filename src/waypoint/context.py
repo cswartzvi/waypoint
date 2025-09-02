@@ -146,8 +146,9 @@ def serialize_context() -> dict[str, Any]:
         if context is None:
             continue
         key = getattr(subclass, "__var__", None)
-        if key is not None:
-            data[key.name] = context.serialize()
+        if key is None:  # pragma: no cover
+            continue  # NOTE: Normally shouldn't happen, `ContextModel` has subclasses
+        data[key.name] = context.serialize()
 
     return data
 
@@ -165,8 +166,8 @@ def hydrated_context(serialized_context: dict[str, Any] | None = None) -> Iterat
         if serialized_context:
             for subclass in iter_subclasses(ContextModel):
                 key = getattr(subclass, "__var__", None)
-                if key is None:
-                    continue
+                if key is None:  # pragma: no cover
+                    continue  # NOTE: Normally shouldn't happen, `ContextModel` has subclasses
 
                 data = serialized_context.get(key.name)
                 if data is None:
