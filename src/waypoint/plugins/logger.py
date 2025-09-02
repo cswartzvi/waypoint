@@ -174,7 +174,7 @@ class WaypointLogger:
         """Hook that is called after a task future completes."""
         logger = get_run_logger()
         if cancelled:
-            logger.warning(f"Task '{task_run.task_id} was cancelled")
+            logger.warning(f"Task '{task_run.task_id}' was cancelled")
         elif error:
             logger.error(f"Task '{task_run.task_id}' failed with error: {error}")
         else:
