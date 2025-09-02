@@ -6,8 +6,6 @@ For more information, please seettps://pluggy.readthedocs.io/en/stable/#specs
 
 from typing import TYPE_CHECKING, Any
 
-from waypoint.runners.base import BaseTaskRunner
-
 from .markers import hook_spec
 
 if TYPE_CHECKING:
@@ -89,16 +87,14 @@ class TaskSpec:
     """Specifies the hooks related to task execution."""
 
     @hook_spec
-    def before_task_submit(
-        self, task_data: TaskData, task_run: TaskRun, runner: BaseTaskRunner
-    ) -> None:
+    def before_task_submit(self, task_data: TaskData, task_run: TaskRun, task_runner: str) -> None:
         """
         Hook called before a task is submitted for execution.
 
         Args:
             task_data (waypoint.tasks.TaskData): Metadata related to the underlying task.
             task_run (waypoint.tasks.TaskRun): Details about current task execution.
-            runner (waypoint.runners.base.BaseTaskRunner): Task runner that will execute the task.
+            task_runner (str): Name of the task runner that will execute the task.
         """
         ...
 
@@ -144,6 +140,29 @@ class TaskSpec:
             task_run (waypoint.tasks.TaskRun): Details about current task execution.
             error (Exception, optional): Exception that occurred during the task execution, if any.
             result (Any): The result of the task execution.
+        """
+        ...
+
+    @hook_spec
+    def after_task_future_result(
+        self,
+        task_data: TaskData,
+        task_run: TaskRun,
+        error: Exception | None,
+        cancelled: bool,
+        result: object | None,
+        task_runner: str,
+    ) -> None:
+        """
+        Hook called after a task run future result is obtained.
+
+        Args:
+            task_data (waypoint.tasks.TaskData): Metadata related to the underlying task.
+            task_run (waypoint.tasks.TaskRun): Details about current task execution.
+            error (Exception, optional): Exception that occurred during the task execution, if any.
+            cancelled (bool): Whether the task was cancelled.
+            result (Any): Result of the task execution.
+            task_runner (str): Name of the task runner that executed the task.
         """
         ...
 

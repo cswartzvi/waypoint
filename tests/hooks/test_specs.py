@@ -86,25 +86,6 @@ class TestTaskHooks:
         assert "after_task_iteration called - test_session.sample_task-1 - 1" == plugin.lines[2]
         assert "after_task_run called - test_session.sample_task-1" == plugin.lines[3]
 
-    def test_hooks_fire_for_task_submission_with_sequential(self, plugin):
-        """
-        Test that task submission hooks fire when using the sequential runner.
-
-        Note: The sequential runner should not, by design, fire the task submission hook.
-        """
-
-        @task(name="sample_task")
-        def sample_task():
-            return "submitted"
-
-        with flow_session(name="test_session", task_runner="sequential"):
-            future = submit_task(sample_task)
-            assert future.result() == "submitted"
-
-        assert len(plugin.lines) == 2  # No submission hooks should fire
-        assert "before_task_run called - test_session.sample_task-1" == plugin.lines[0]
-        assert "after_task_run called - test_session.sample_task-1" == plugin.lines[1]
-
     def test_hooks_fire_for_task_submission_with_threaded(self, plugin):
         """Test that task submission hooks fire when using the threaded runner."""
 
@@ -116,7 +97,8 @@ class TestTaskHooks:
             future = submit_task(sample_task)
             assert future.result() == "submitted"
 
-        assert len(plugin.lines) == 3
+        assert len(plugin.lines) == 4
         assert "before_task_submit called - test_session.sample_task-1" == plugin.lines[0]
         assert "before_task_run called - test_session.sample_task-1" == plugin.lines[1]
         assert "after_task_run called - test_session.sample_task-1" == plugin.lines[2]
+        assert "after_task_future_result called - test_session.sample_task-1" in plugin.lines

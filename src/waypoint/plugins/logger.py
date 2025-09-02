@@ -114,11 +114,15 @@ class WaypointLogger:
         self,
         task_data: TaskData,
         task_run: TaskRun,
-        runner: BaseTaskRunner,
+        task_runner: str,
     ) -> None:
         """Hook that is called before a task is submitted for execution."""
         logger = get_run_logger()
-        logger.info(f"Submitting task '{task_data.name}' to '{runner.name}' runner")
+        message = f"Submitting task '{task_run.task_id}' to '{task_runner}' runner"
+        if task_runner in {"sequential", "threading"}:
+            logger.debug(message)
+        else:
+            logger.info(message)
 
     @hook_impl
     def before_task_run(
@@ -156,6 +160,29 @@ class WaypointLogger:
             logger.error("Task run failed with error")
         else:
             logger.info("Finished task run [OK]")
+
+    @hook_impl
+    def after_task_future_result(
+        self,
+        task_data: TaskData,
+        task_run: TaskRun,
+        error: Exception | None,
+        cancelled: bool,
+        result: object | None,
+        task_runner: str,
+    ) -> None:
+        """Hook that is called after a task future completes."""
+        logger = get_run_logger()
+        if cancelled:
+            logger.warning(f"Task '{task_run.task_id} was cancelled")
+        elif error:
+            logger.error(f"Task '{task_run.task_id}' failed with error: {error}")
+        else:
+            message = f"Task '{task_run.task_id}' returned from '{task_runner}' runner [OK]"
+            if task_runner in {"sequential", "threading"}:
+                logger.debug(message)
+            else:
+                logger.info(message)
 
 
 def _setup_console_logging(level: int = logging.INFO, traceback: bool = False) -> None:
