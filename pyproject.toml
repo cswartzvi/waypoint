@@ -9,12 +9,12 @@ dependencies = [
     "cloudpickle>=3.1.1",
     "pluggy>=1.6.0",
     "pydantic>=2.11.7",
+    "typing-extensions",  # Until Python 3.12 is minimum
 ]
 
 [project.optional-dependencies]
-rich = [
+logging = [
     "rich>=14.0.0",
-    "typing-extensions; python_version < '3.12'",
 ]
 
 [build-system]
