@@ -35,8 +35,3 @@ dev = [
     "ruff",
     "nox>=2025.5.1",
 ]
-
-# [[tool.uv.index]]
-# url = "https://pypi.q.local/simple"
-# default = true
-
