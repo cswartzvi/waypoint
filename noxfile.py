@@ -19,7 +19,7 @@ def lint(session: nox.Session) -> None:
     session.run("pre-commit", "run", "--all-files", *session.posargs)
 
 
-@nox.session(python=["3.10", "3.11", "3.12", "3.13"])
+@nox.session(python=["3.10", "3.11", "3.12", "3.13", "3.13t"])
 def test(session: nox.Session) -> None:
     """Run testing suite in an isolated environment."""
     session.run_install(
