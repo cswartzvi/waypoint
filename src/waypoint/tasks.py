@@ -3,7 +3,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from dataclasses import field
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, Coroutine, ParamSpec, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterator, ParamSpec, TypeVar, overload
 
 from waypoint.futures import TaskFuture
 
@@ -259,6 +259,27 @@ def submit_task(task: Callable[..., Any], *args, **kwargs) -> TaskFuture[Any]:
             hook(task_data=task_data, task_run=task_run, runner=task_runner)
 
     return task_runner.submit(wrapper)
+
+
+def map_task(task: Callable[P, R], *args) -> Iterator[R]:
+    """
+    Map a task over multiple sets of arguments, yielding results as they complete.
+
+    This function is similar to the built-in `map`, but is designed to work with Waypoint tasks.
+
+    Args:
+        task (Callable[P, R]):
+            The task function to be executed. Must be a valid Waypoint task.
+        *args (P.args):
+            Arugments to map over. Each argument should be an iterable of values.
+
+    Raises:
+        InvalidTaskError: If the provided function is not a valid Waypoint task.
+
+    Returns:
+        Iterator[R]: An iterator over the results of the task executions.
+    """
+    yield from []  # Placeholder for future implementation
 
 
 # region Metadata
