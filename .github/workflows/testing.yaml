@@ -11,10 +11,10 @@ on:
     branches:
       - main
     paths:
-      - "src/**"
-      - tests/**"
-      - ".github/**"
-      - "pyproject.toml"
+      - src/**
+      - tests/**
+      - .github/**
+      - pyproject.toml
 
 jobs:
   test:
