@@ -101,7 +101,8 @@ def patch_print(enable: bool = True) -> Iterator[None]:
         builtins.print = original
 
 
-def _print_as_log(*args, **kwargs):
+# TODO: Remove pragma when feature is fully implemented
+def _print_as_log(*args, **kwargs):  # pragma: no cover
     """
     Patches `print` to send printed messages to a run logger.
 
