@@ -5,7 +5,7 @@
 # ]
 # ///
 
-import nox  # pyright: ignore
+import nox
 
 nox.options.default_venv_backend = "uv"
 nox.options.sessions = ["lint", "test"]

@@ -33,6 +33,7 @@ dev = [
     "pytest-mock",
     "pyrefly",
     "ruff",
+    "nox>=2025.5.1",
 ]
 
 # [[tool.uv.index]]
