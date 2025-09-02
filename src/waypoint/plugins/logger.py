@@ -4,10 +4,10 @@ from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, get_args
 
-try:
+try:  # pragma: no cover
     import rich.logging
     from rich import get_console
-except ImportError:
+except ImportError:  # pragma: no cover
     raise ImportError("Rich library is required for logging in Waypoint.") from None
 
 from waypoint.hooks import hook_impl
