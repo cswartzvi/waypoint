@@ -372,7 +372,7 @@ def _submit_task(
             task_run=task_run,
             error=f.exception(),
             cancelled=f.cancelled(),
-            result=f.result() if not f.cancelled() else None,
+            result=f.result() if not f.cancelled() and not f.exception() else None,
             task_runner=task_runner.name,
         )
     )
