@@ -8,7 +8,7 @@ T = TypeVar("T")
 
 class BaseAnnotation(tuple[T]):
     """
-    Base class for Prefect annotation types.
+    Base class for Waypoint annotation types.
 
     Inherits from `tuple` for unpacking support in other tools.
     """
