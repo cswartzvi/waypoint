@@ -7,7 +7,7 @@ and cannot be used with other libraries that expect a `Future` object.
 """
 
 import concurrent.futures
-from typing import Any, Generic, Iterable, Iterator, Literal, TypeVar, cast, overload
+from typing import Any, Callable, Generic, Iterable, Iterator, Literal, TypeVar, cast, overload
 
 # from typing_extensions import override
 
@@ -90,6 +90,17 @@ class TaskFuture(Generic[R]):
     def done(self) -> bool:
         """Return True if the task completed successfully or was cancelled."""
         return self._raw_future.done()
+
+    def add_done_callback(self, fn: Callable[[concurrent.futures.Future], None]) -> None:
+        """
+        Attaches a callable that will be called when the task is completed.
+
+        The callable will be called with this `TaskFuture` object as its only argument.
+
+        Args:
+            fn: The callable to be called when the task is completed.
+        """
+        self._raw_future.add_done_callback(fn)
 
     def __hash__(self) -> int:
         return hash(self._raw_future)

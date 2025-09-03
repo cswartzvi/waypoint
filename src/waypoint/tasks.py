@@ -1,25 +1,28 @@
 from collections.abc import AsyncGenerator
 from collections.abc import Generator
+from contextvars import copy_context
 from dataclasses import dataclass
 from dataclasses import field
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, Coroutine, ParamSpec, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterator, ParamSpec, TypeVar, overload
 
 from waypoint.futures import TaskFuture
 
 if TYPE_CHECKING:
     from waypoint.runners import BaseTaskRunner
     from waypoint.runners import DefaultTaskRunner
+    from waypoint.task_run import TaskRun
 else:
     BaseTaskRunner = Any
     DefaultTaskRunner = Any
+    TaskRun = Any
 
 
 R = TypeVar("R")
 P = ParamSpec("P")
 
 
-# region API
+# region Tasks
 
 
 @overload
@@ -175,18 +178,8 @@ def submit_task(task: Callable[..., Any], *args, **kwargs) -> TaskFuture[Any]:
         R: The result of the task execution.
     """
     from waypoint.context import FlowRunContext
-    from waypoint.context import TaskRunContext
     from waypoint.exceptions import MissingContextError
-    from waypoint.hooks.manager import get_hook_manager
-    from waypoint.runners.sequential import SequentialTaskRunner
-    from waypoint.task_engine import consume_generator_task_async
-    from waypoint.task_engine import consume_generator_task_sync
-    from waypoint.task_engine import run_task_async
-    from waypoint.task_engine import run_task_sync
-    from waypoint.task_run import create_task_run
     from waypoint.utils.callables import get_call_arguments
-    from waypoint.utils.callables import is_asynchronous
-    from waypoint.utils.callables import is_generator
 
     flow_run_context = FlowRunContext.get()
     if flow_run_context is None:
@@ -194,54 +187,172 @@ def submit_task(task: Callable[..., Any], *args, **kwargs) -> TaskFuture[Any]:
             "No active flow is running to submit the task to. "
             "Tasks must be called within a flow run or flow session."
         )
+
     task_runner = flow_run_context.task_runner
+    parameters = get_call_arguments(task, args, kwargs)
+    return _submit_task(task_function=task, arguments=parameters, task_runner=task_runner)
+
+
+@overload
+def map_task(
+    task: Callable[..., Coroutine[Any, Any, R]], *args: Any, **kwargs: Any
+) -> Iterator[R]: ...
+
+
+@overload
+def map_task(
+    task: Callable[..., AsyncGenerator[R, None]], *args: Any, **kwargs: Any
+) -> Iterator[list[R]]: ...
+
+
+@overload
+def map_task(
+    task: Callable[..., Generator[R, None, None]], *args: Any, **kwargs: Any
+) -> Iterator[list[R]]: ...
+
+
+@overload
+def map_task(task: Callable[..., R], *args: Any, **kwargs: Any) -> Iterator[R]: ...
+
+
+def map_task(task: Callable[..., Any], *args: Any, **kwargs: Any) -> Iterator[Any]:
+    """
+    Map a task over multiple sets of arguments, yielding results as they complete.
+
+    This function is similar to the built-in `map`, but is designed to work with Waypoint tasks.
+
+    Args:
+        task (Callable[P, R]):
+            The task function to be executed. Must be a valid Waypoint task.
+        *args (P.args):
+            Positional arguments to pass to the task function. At least one argument must be
+            iterable (e.g., list, tuple). Use `unmapped` to pass static arguments.
+        **kwargs (P.kwargs):
+            Keyword arguments to pass to the task function. At least one argument must be
+            iterable (e.g., list, tuple). Use `unmapped` to pass static arguments.
+
+    Raises:
+        InvalidTaskError: If the provided function is not a valid Waypoint task.
+
+    Returns:
+        Iterator[R]: An iterator over the results of the task executions.
+    """
+    from waypoint.context import FlowRunContext
+    from waypoint.exceptions import MappingLengthMismatch
+    from waypoint.exceptions import MappingMissingIterable
+    from waypoint.exceptions import MissingContextError
+    from waypoint.utils.annotations import unmapped
+    from waypoint.utils.callables import collapse_variadic_arguments
+    from waypoint.utils.callables import explode_variadic_arguments
+    from waypoint.utils.callables import get_call_arguments
+    from waypoint.utils.callables import get_parameter_defaults
+    from waypoint.utils.collections import is_iterable
+
+    flow_run_context = FlowRunContext.get()
+    if flow_run_context is None:
+        raise MissingContextError(
+            "No active flow is running to map the task to. "
+            "Tasks must be called within a flow run or flow session."
+        )
+
+    task_runner: BaseTaskRunner = flow_run_context.task_runner
+    arguments = get_call_arguments(task, args, kwargs, apply_defaults=False)
+    arguments = explode_variadic_arguments(task, arguments)
+
+    # Separate static and iterable arguments
+    iterable_arguments: dict[str, Any] = {}
+    static_arguments: dict[str, Any] = {}
+    for key, val in arguments.items():
+        if isinstance(val, unmapped):
+            static_arguments[key] = val.value
+        elif is_iterable(val):
+            iterable_arguments[key] = list(val)
+        else:
+            static_arguments[key] = val
+
+    if not len(iterable_arguments):
+        raise MappingMissingIterable(
+            "No iterable arguments were received. Arguments for map must "
+            f"include at least one iterable. Arguments: {arguments}"
+        )
+
+    # All iterable arguments are the same length
+    iterable_arguments_lengths = {key: len(val) for key, val in iterable_arguments.items()}
+    lengths = set(iterable_arguments_lengths.values())
+    if len(lengths) > 1:
+        raise MappingLengthMismatch(
+            "Received iterable arguments with different lengths. Arguments for map"
+            f" must all be the same length. Got lengths: {iterable_arguments_lengths}"
+        )
+    map_length = list(lengths)[0]
+
+    # Submit tasks for each set of arguments
+    futures: list[TaskFuture[Any]] = []
+    for i in range(map_length):
+        call_args: dict[str, Any] = {key: value[i] for key, value in iterable_arguments.items()}
+        call_args.update({key: value for key, value in static_arguments.items()})
+
+        # Add default values for parameters; these are skipped earlier since they should
+        # not be mapped over
+        for key, value in get_parameter_defaults(task).items():
+            call_args.setdefault(key, value)
+
+        # Collapse any previously exploded kwargs
+        call_args = collapse_variadic_arguments(task, call_args)
+
+        future = _submit_task(task_function=task, arguments=call_args, task_runner=task_runner)
+        futures.append(future)
+
+    for future in futures:
+        yield future.result()
+
+
+def _create_best_effort_task_data(func: Callable[..., Any]) -> "TaskData":
+    """Create task data for a callable that is not a valid Waypoint task."""
+    from waypoint.utils.callables import is_asynchronous
+    from waypoint.utils.callables import is_generator
+
+    task_data = TaskData(
+        name=func.__name__ if hasattr(func, "__name__") else str(func),
+        is_async=is_asynchronous(func),
+        is_generator=is_generator(func),
+        _original_function=func,
+    )
+    _add_task_data(func, task_data)
+
+    return task_data
+
+
+def _submit_task(
+    task_function: Callable[..., R], arguments: dict[str, Any], task_runner: BaseTaskRunner
+) -> TaskFuture[R]:
+    """Submit a task function with arguments to the specified task runner."""
+    from waypoint.context import TaskRunContext
+    from waypoint.hooks.manager import try_run_hook
+    from waypoint.runners.sequential import SequentialTaskRunner
+    from waypoint.task_run import create_task_run
 
     # Make a best-effort attempt to create task data if task is not valid
-    if not is_task(task):
-        task_data = TaskData(
-            name=task.__name__ if hasattr(task, "__name__") else str(task),
-            is_async=is_asynchronous(task),
-            is_generator=is_generator(task),
-            _original_function=task,
-        )
-        _add_task_data(task, task_data)
+    if not is_task(task_function):
+        task_data = _create_best_effort_task_data(task_function)
     else:
-        task_data = get_task_data(task)
+        task_data = get_task_data(task_function)
 
-    parameters = get_call_arguments(task_data._original_function, args, kwargs)
-    task_run = create_task_run(task_data, parameters)
-    engine_params: dict[str, Any] = {
-        "task_function": task_data._original_function,
-        "task_data": task_data,
-        "task_run": task_run,
-    }
+    task_run = create_task_run(task_data, arguments)
 
-    # Create wrapper sync or async function to run the task with the task engine. Note that
-    # generator should be consumed fully within the wrapper, as task runners expect a final
-    # result (not a generator).
     wrapper: Callable[[], Any]
     if task_data.is_async:
-
-        @wraps(task)
-        async def async_task_wrapper() -> Any:
-            if task_data.is_generator:
-                return await consume_generator_task_async(**engine_params)
-            else:
-                return await run_task_async(**engine_params)
-
-        wrapper = async_task_wrapper
-
+        wrapper = _async_submit_wrapper(task_data._original_function, task_data, task_run)
     else:
+        wrapper = _sync_submit_wrapper(task_data._original_function, task_data, task_run)
+    wrapper = wraps(task_function)(wrapper)
 
-        @wraps(task)
-        def sync_task_wrapper() -> Any:
-            if task_data.is_generator:
-                return consume_generator_task_sync(**engine_params)
-            else:
-                return run_task_sync(**engine_params)
-
-        wrapper = sync_task_wrapper
-
+    try_run_hook(
+        hook_name="before_task_submit",
+        task_data=task_data,
+        task_run=task_run,
+        task_runner=task_runner.name,
+    )
     # NOTE: Currently, nested tasks only support sequential execution. Changing this would
     # require a more complex setup that allows tasks to forward a nested tasks to the task runner
     # defined on the parent flow (possible distributed and many levels up and on).
@@ -250,15 +361,71 @@ def submit_task(task: Callable[..., Any], *args, **kwargs) -> TaskFuture[Any]:
         with task_runner.start():
             return task_runner.submit(wrapper)
 
-    # Should fire event immediately before submitting to the task runner, but after creating
-    # the task run. Note that we skip this for sequential task runners as they run in-line
-    # and the hook would be redundant.
-    if not isinstance(task_runner, SequentialTaskRunner):
-        hook_manager = get_hook_manager()
-        if hook := getattr(hook_manager.hook, "before_task_submit", None):  # pragma: no branch
-            hook(task_data=task_data, task_run=task_run, runner=task_runner)
+    future = task_runner.submit(wrapper)
 
-    return task_runner.submit(wrapper)
+    context = copy_context()
+    future.add_done_callback(
+        lambda f: context.run(
+            try_run_hook,
+            "after_task_future_result",
+            task_data=task_data,
+            task_run=task_run,
+            error=f.exception(),
+            cancelled=f.cancelled(),
+            result=f.result() if not f.cancelled() and not f.exception() else None,
+            task_runner=task_runner.name,
+        )
+    )
+
+    return future
+
+
+def _sync_submit_wrapper(
+    task_function: Callable[..., R], task_data: "TaskData", task_run: TaskRun
+) -> Callable[[], R]:
+    """Create a synchronous wrapper to submit a task to the task engine."""
+    from waypoint.task_engine import consume_generator_task_sync
+    from waypoint.task_engine import run_task_sync
+
+    engine_params: dict[str, Any] = {
+        "task_function": task_function,
+        "task_data": task_data,
+        "task_run": task_run,
+    }
+
+    # Wrapper sync function to run the task with the task engine. Note that generator should be
+    # consumed fully within the wrapper, as task runners expect a final result (not a generator).
+    def sync_task_wrapper() -> Any:
+        if task_data.is_generator:
+            return consume_generator_task_sync(**engine_params)
+        else:
+            return run_task_sync(**engine_params)
+
+    return sync_task_wrapper
+
+
+def _async_submit_wrapper(
+    task_function: Callable[..., R], task_data: "TaskData", task_run: TaskRun
+) -> Callable[[], Coroutine[Any, Any, R]]:
+    """Create an asynchronous wrapper to submit a task to the task engine."""
+    from waypoint.task_engine import consume_generator_task_async
+    from waypoint.task_engine import run_task_async
+
+    engine_params: dict[str, Any] = {
+        "task_function": task_function,
+        "task_data": task_data,
+        "task_run": task_run,
+    }
+
+    # Wrapper async function to run the task with the task engine. Note that generator should be
+    # consumed fully within the wrapper, as task runners expect a final result (not a generator).
+    async def async_task_wrapper() -> Any:
+        if task_data.is_generator:
+            return await consume_generator_task_async(**engine_params)
+        else:
+            return await run_task_async(**engine_params)
+
+    return async_task_wrapper
 
 
 # region Metadata

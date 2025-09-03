@@ -36,6 +36,14 @@ class MissingContextError(WaypointException, RuntimeError):
     """Raised when no task or flow run context to be can be found (but is required)."""
 
 
+class MappingMissingIterable(WaypointException):
+    """Raised when attempting to call Task.map with all static arguments."""
+
+
+class MappingLengthMismatch(WaypointException):
+    """Raised when attempting to call Task.map with arguments of different lengths."""
+
+
 class ParameterBindError(TypeError, WaypointException):
     """Raised when args and kwargs cannot be converted to parameters."""
 

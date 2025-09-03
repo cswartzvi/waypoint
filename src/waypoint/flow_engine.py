@@ -165,7 +165,7 @@ class BaseFlowRunEngine(Generic[P, R]):
 
         kwargs.setdefault("flow_data", self.flow_data)
         kwargs.setdefault("flow_run", self.flow_run)
-        try_run_hook(self._hook_manager, hook_name, **kwargs)
+        try_run_hook(manager=self._hook_manager, hook_name=hook_name, **kwargs)
 
 
 # region Engine: Sync

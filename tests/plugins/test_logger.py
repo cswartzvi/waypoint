@@ -178,6 +178,92 @@ class TestLoggerIntegrationTasks:
             with pytest.raises(Exception):  # TaskRunError wraps the original exception
                 future.result()
 
+    def test_logger_plugin_with_flow_error(self, plugin):
+        """Test logger plugin with flow that has errors."""
+
+        @flow
+        def failing_flow():
+            raise ValueError("Flow error")
+
+        with pytest.raises(ValueError):
+            failing_flow()
+
+    def test_logger_plugin_with_custom_task_runner(self, plugin):
+        """Test logger plugin with non-standard task runner name."""
+        from unittest.mock import Mock
+
+        from waypoint.context import FlowRunContext
+        from waypoint.flows import flow_session
+
+        @task
+        def test_task(x: int) -> int:
+            return x + 1
+
+        with flow_session():
+            # Mock a custom task runner name
+            context = FlowRunContext.get()
+            if context:  # Ensure context exists
+                original_runner = context.task_runner
+                mock_runner = Mock()
+                mock_runner.name = "custom_runner"
+                mock_runner.submit = original_runner.submit
+                context.task_runner = mock_runner
+
+                future = submit_task(test_task, 5)
+                result = future.result()
+                assert result == 6
+
+    def test_logger_plugin_with_cancelled_future(self, plugin):
+        """Test logger plugin handles cancelled futures."""
+        from unittest.mock import Mock
+
+        from waypoint.plugins.logger import WaypointLogger
+        from waypoint.task_run import TaskRun
+        from waypoint.tasks import TaskData
+
+        # Create mocks
+        task_data = Mock(spec=TaskData)
+        task_run = Mock(spec=TaskRun)
+        task_run.task_id = "test-task-id"
+
+        # Test cancelled future within a flow context
+        with flow_session():
+            logger_plugin = WaypointLogger()
+            logger_plugin.after_task_future_result(
+                task_data=task_data,
+                task_run=task_run,
+                error=None,
+                cancelled=True,
+                result=None,
+                task_runner="threading",
+            )
+
+    def test_logger_plugin_with_failed_future(self, plugin):
+        """Test logger plugin handles failed futures."""
+        from unittest.mock import Mock
+
+        from waypoint.plugins.logger import WaypointLogger
+        from waypoint.task_run import TaskRun
+        from waypoint.tasks import TaskData
+
+        # Create mocks
+        task_data = Mock(spec=TaskData)
+        task_run = Mock(spec=TaskRun)
+        task_run.task_id = "test-task-id"
+        error = RuntimeError("Task failed")
+
+        # Test failed future within a flow context
+        with flow_session():
+            logger_plugin = WaypointLogger()
+            logger_plugin.after_task_future_result(
+                task_data=task_data,
+                task_run=task_run,
+                error=error,
+                cancelled=False,
+                result=None,
+                task_runner="custom_runner",  # Non-standard runner
+            )
+
 
 class TestSetupFunctions:
     """Test suite for the setup functions used by WaypointLogger."""
@@ -279,3 +365,19 @@ class TestSetupFunctions:
         # Assert - handler count should not increase
         final_handler_count = len(logger.handlers)
         assert final_handler_count == initial_handler_count
+
+        # Clean up file handlers to prevent race conditions with temp directory cleanup
+        for logger_name in ["waypoint", "waypoint.flow", "waypoint.task"]:
+            test_logger = logging.getLogger(logger_name)
+            # Remove file handlers that point to the temp directory
+            handlers_to_remove = [
+                h
+                for h in test_logger.handlers
+                if (
+                    hasattr(h, "baseFilename")
+                    and str(temp_dir) in str(getattr(h, "baseFilename", ""))
+                )
+            ]
+            for handler in handlers_to_remove:
+                handler.close()
+                test_logger.removeHandler(handler)

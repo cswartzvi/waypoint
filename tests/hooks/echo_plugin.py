@@ -42,7 +42,7 @@ class EchoPlugin:
 
     @hook_impl
     def before_task_submit(
-        self, task_data: TaskData, task_run: TaskRun, runner: BaseTaskRunner
+        self, task_data: TaskData, task_run: TaskRun, task_runner: BaseTaskRunner
     ) -> None:
         self.lines.append(f"before_task_submit called - {task_run.task_id}")
 
@@ -65,3 +65,13 @@ class EchoPlugin:
         result: object | None,
     ) -> None:
         self.lines.append(f"after_task_run called - {task_run.task_id}")
+
+    @hook_impl
+    def after_task_future_result(
+        self,
+        task_data: TaskData,
+        task_run: TaskRun,
+        error: Exception | None,
+        result: object | None,
+    ) -> None:
+        self.lines.append(f"after_task_future_result called - {task_run.task_id}")

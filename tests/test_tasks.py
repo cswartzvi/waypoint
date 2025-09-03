@@ -11,6 +11,7 @@ from waypoint.exceptions import TaskRunError
 from waypoint.flows import flow_session
 from waypoint.tasks import TaskData
 from waypoint.tasks import get_task_data
+from waypoint.tasks import map_task
 
 
 @pytest.fixture(autouse=True)
@@ -559,3 +560,329 @@ class TestTaskSubmission:
 
         with pytest.raises(MissingContextError):
             submit_task(simple_task)
+
+
+class TestTaskMapping:
+    """Test task mapping functionality."""
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_single_iterable_positional_arg(self):
+        """Test mapping over a single iterable positional argument."""
+
+        @task
+        def square(x: int) -> int:
+            return x * x
+
+        numbers = [1, 2, 3, 4, 5]
+        results = list(map_task(square, numbers))
+        assert results == [1, 4, 9, 16, 25]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_multiple_iterable_positional_args(self):
+        """Test mapping over multiple iterable positional arguments."""
+
+        @task
+        def add(x: int, y: int) -> int:
+            return x + y
+
+        x_values = [1, 2, 3]
+        y_values = [10, 20, 30]
+        results = list(map_task(add, x_values, y_values))
+        assert results == [11, 22, 33]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_single_iterable_keyword_arg(self):
+        """Test mapping over a single iterable keyword argument."""
+
+        @task
+        def multiply_by_factor(value: int, factor: int = 2) -> int:
+            return value * factor
+
+        factors = [1, 2, 3, 4]
+        results = list(map_task(multiply_by_factor, value=10, factor=factors))
+        assert results == [10, 20, 30, 40]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_multiple_iterable_keyword_args(self):
+        """Test mapping over multiple iterable keyword arguments."""
+
+        @task
+        def calculate(base: int, multiplier: int, offset: int = 0) -> int:
+            return base * multiplier + offset
+
+        bases = [1, 2, 3]
+        multipliers = [5, 10, 15]
+        offsets = [1, 2, 3]
+        results = list(map_task(calculate, base=bases, multiplier=multipliers, offset=offsets))
+        assert results == [6, 22, 48]  # (1*5+1), (2*10+2), (3*15+3)
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_mixed_iterable_and_static_args(self):
+        """Test mapping with both iterable and static arguments."""
+        from waypoint.utils.annotations import unmapped
+
+        @task
+        def format_message(prefix: str, value: int, suffix: str) -> str:
+            return f"{prefix}{value}{suffix}"
+
+        prefixes = ["A:", "B:", "C:"]
+        static_suffix = "!"
+        results = list(map_task(format_message, prefixes, value=42, suffix=unmapped(static_suffix)))
+        assert results == ["A:42!", "B:42!", "C:42!"]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_unmapped_positional_args(self):
+        """Test mapping with unmapped positional arguments."""
+        from waypoint.utils.annotations import unmapped
+
+        @task
+        def combine(prefix: str, value: int, multiplier: int) -> str:
+            return f"{prefix}{value * multiplier}"
+
+        values = [1, 2, 3]
+        static_prefix = "Item:"
+        static_multiplier = 10
+        results = list(
+            map_task(combine, unmapped(static_prefix), values, unmapped(static_multiplier))
+        )
+        assert results == ["Item:10", "Item:20", "Item:30"]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_unmapped_keyword_args(self):
+        """Test mapping with unmapped keyword arguments."""
+        from waypoint.utils.annotations import unmapped
+
+        @task
+        def process_data(data: int, scale: int, prefix: str = "Result") -> str:
+            return f"{prefix}: {data * scale}"
+
+        data_values = [1, 2, 3, 4]
+        static_scale = 5
+        static_prefix = "Output"
+        results = list(
+            map_task(
+                process_data,
+                data=data_values,
+                scale=unmapped(static_scale),
+                prefix=unmapped(static_prefix),
+            )
+        )
+        assert results == ["Output: 5", "Output: 10", "Output: 15", "Output: 20"]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_default_parameters(self):
+        """Test mapping with tasks that have default parameters."""
+
+        @task
+        def calculate_with_defaults(value: int, multiplier: int = 2, offset: int = 0) -> int:
+            return value * multiplier + offset
+
+        values = [1, 2, 3]
+        # Only mapping over value, using defaults for multiplier and offset
+        results = list(map_task(calculate_with_defaults, values))
+        assert results == [2, 4, 6]  # value * 2 + 0
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_async_task(self):
+        """Test mapping with asynchronous tasks."""
+
+        @task
+        async def async_multiply(x: int, factor: int) -> int:
+            await asyncio.sleep(0.001)  # Simulate async work
+            return x * factor
+
+        values = [1, 2, 3]
+        factors = [10, 20, 30]
+        results = list(map_task(async_multiply, values, factors))
+        assert results == [10, 40, 90]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_generator_task(self):
+        """Test mapping with generator tasks."""
+
+        @task
+        def generate_sequence(start: int, count: int) -> Generator[int, None, None]:
+            for i in range(count):
+                yield start + i
+
+        starts = [0, 10, 20]
+        counts = [3, 2, 4]
+        results = list(map_task(generate_sequence, starts, counts))
+        expected = [
+            [0, 1, 2],  # start=0, count=3
+            [10, 11],  # start=10, count=2
+            [20, 21, 22, 23],  # start=20, count=4
+        ]
+        assert results == expected
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_async_generator_task(self):
+        """Test mapping with async generator tasks."""
+
+        @task
+        async def async_generate_sequence(start: int, count: int) -> AsyncGenerator[int, None]:
+            for i in range(count):
+                await asyncio.sleep(0.001)
+                yield start + i
+
+        starts = [0, 5]
+        counts = [2, 3]
+        results = list(map_task(async_generate_sequence, starts, counts))
+        expected = [
+            [0, 1],  # start=0, count=2
+            [5, 6, 7],  # start=5, count=3
+        ]
+        assert results == expected
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_empty_iterable(self):
+        """Test mapping with empty iterables."""
+
+        @task
+        def double(x: int) -> int:
+            return x * 2
+
+        empty_list = []
+        results = list(map_task(double, empty_list))
+        assert results == []
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_complex_data_types(self):
+        """Test mapping with complex data types like dictionaries."""
+
+        @task
+        def process_dict(data: dict, key: str) -> str:
+            return f"{key}: {data.get(key, 'missing')}"
+
+        data_list = [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}, {"name": "Charlie"}]
+        keys = ["name", "age", "name"]
+        results = list(map_task(process_dict, data_list, keys))
+        assert results == ["name: Alice", "age: 25", "name: Charlie"]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_non_task_function(self):
+        """Test mapping with a non-task function (should create task data automatically)."""
+
+        def regular_function(x: int) -> int:
+            return x**2
+
+        values = [2, 3, 4]
+        results = list(map_task(regular_function, values))
+        assert results == [4, 9, 16]
+
+    def test_map_task_missing_iterable_arguments_raises(self):
+        """Test that mapping without iterable arguments raises MappingMissingIterable."""
+        from waypoint.exceptions import MappingMissingIterable
+        from waypoint.utils.annotations import unmapped
+
+        @task
+        def static_task(x: int, y: str) -> str:
+            return f"{y}: {x}"
+
+        with pytest.raises(MappingMissingIterable, match="No iterable arguments were received"):
+            list(map_task(static_task, unmapped(42), unmapped("prefix")))
+
+    def test_map_task_length_mismatch_raises(self):
+        """Test that mapping with mismatched iterable lengths raises MappingLengthMismatch."""
+        from waypoint.exceptions import MappingLengthMismatch
+
+        @task
+        def add(x: int, y: int) -> int:
+            return x + y
+
+        x_values = [1, 2, 3]
+        y_values = [10, 20]  # Different length
+
+        with pytest.raises(MappingLengthMismatch, match="different lengths"):
+            list(map_task(add, x_values, y_values))
+
+    def test_map_task_length_mismatch_with_kwargs_raises(self):
+        """Test mapping with mismatched keyword iterable lengths raises MappingLengthMismatch."""
+        from waypoint.exceptions import MappingLengthMismatch
+
+        @task
+        def calculate(base: int, multiplier: int, offset: int) -> int:
+            return base * multiplier + offset
+
+        with pytest.raises(MappingLengthMismatch, match="different lengths"):
+            list(
+                map_task(
+                    calculate,
+                    base=[1, 2, 3],
+                    multiplier=[5, 10],  # Length 2
+                    offset=[1, 2, 3, 4],  # Length 4
+                )
+            )
+
+    @pytest.mark.noautouse
+    def test_map_task_outside_flow_context_raises(self):
+        """Test that mapping outside a flow context raises MissingContextError."""
+        from waypoint.exceptions import MissingContextError
+
+        @task
+        def simple_task(x: int) -> int:
+            return x * 2
+
+        with pytest.raises(MissingContextError):
+            list(map_task(simple_task, [1, 2, 3]))
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_with_tuple_iterable(self):
+        """Test mapping with tuple iterables."""
+
+        @task
+        def join_strings(a: str, b: str) -> str:
+            return f"{a}-{b}"
+
+        first_parts = ("hello", "good", "nice")
+        second_parts = ("world", "bye", "day")
+        results = list(map_task(join_strings, first_parts, second_parts))
+        assert results == ["hello-world", "good-bye", "nice-day"]
+
+    @pytest.mark.parametrize("flow_context", ["sequential", "threading"], indirect=True)
+    def test_map_task_single_item_iterables(self):
+        """Test mapping with single-item iterables."""
+
+        @task
+        def format_value(value: int, template: str) -> str:
+            return template.format(value)
+
+        values = [42]
+        templates = ["Value: {}"]
+        results = list(map_task(format_value, values, templates))
+        assert results == ["Value: 42"]
+
+    def test_map_task_error_propagation_sequential(self):
+        """Test that exceptions in mapped tasks are properly propagated with sequential runner."""
+
+        @task
+        def failing_task(x: int) -> int:
+            if x == 2:
+                raise ValueError(f"Error with value {x}")
+            return x * 2
+
+        with flow_session(name="test_flow", task_runner="sequential"):
+            values = [1, 2, 3]
+            # With sequential runner, the error occurs during task submission/execution
+            with pytest.raises(TaskRunError, match="Error with value 2"):
+                list(map_task(failing_task, values))
+
+    @pytest.mark.parametrize("flow_context", ["threading"], indirect=True)
+    def test_map_task_error_propagation_concurrent(self):
+        """Test that exceptions in mapped tasks are properly propagated with concurrent runners."""
+
+        @task
+        def failing_task(x: int) -> int:
+            if x == 2:
+                raise ValueError(f"Error with value {x}")
+            return x * 2
+
+        values = [1, 2, 3]
+        iterator = map_task(failing_task, values)
+
+        # First result should work
+        assert next(iterator) == 2  # 1 * 2
+
+        # Second result should raise the exception (wrapped in TaskRunError)
+        with pytest.raises(TaskRunError, match="Error with value 2"):
+            next(iterator)
