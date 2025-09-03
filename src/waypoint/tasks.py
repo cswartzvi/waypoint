@@ -193,7 +193,29 @@ def submit_task(task: Callable[..., Any], *args, **kwargs) -> TaskFuture[Any]:
     return _submit_task(task_function=task, arguments=parameters, task_runner=task_runner)
 
 
-def map_task(task: Callable[P, R], *args, **kwargs) -> Iterator[R]:
+@overload
+def map_task(
+    task: Callable[..., Coroutine[Any, Any, R]], *args: Any, **kwargs: Any
+) -> Iterator[R]: ...
+
+
+@overload
+def map_task(
+    task: Callable[..., AsyncGenerator[R, None]], *args: Any, **kwargs: Any
+) -> Iterator[list[R]]: ...
+
+
+@overload
+def map_task(
+    task: Callable[..., Generator[R, None, None]], *args: Any, **kwargs: Any
+) -> Iterator[list[R]]: ...
+
+
+@overload
+def map_task(task: Callable[..., R], *args: Any, **kwargs: Any) -> Iterator[R]: ...
+
+
+def map_task(task: Callable[..., Any], *args: Any, **kwargs: Any) -> Iterator[Any]:
     """
     Map a task over multiple sets of arguments, yielding results as they complete.
 
