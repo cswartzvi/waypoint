@@ -16,6 +16,9 @@ dependencies = [
 logging = [
     "rich>=14.0.0",
 ]
+fsspec = [
+    "fsspec>=2024.6.1",
+]
 
 [build-system]
 requires = ["setuptools>=61"]
