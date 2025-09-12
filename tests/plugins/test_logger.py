@@ -160,10 +160,11 @@ class TestLoggerIntegrationTasks:
         def failing_task():
             raise RuntimeError("Task failed")
 
-        # Sequential runner raises exception during submission
+        # Sequential runner now defers execution like other runners for consistency
         with flow_session(task_runner="sequential"):
+            future = submit_task(failing_task)
             with pytest.raises(Exception):
-                submit_task(failing_task)
+                future.result()
 
     def test_logger_plugin_with_failing_task_threading(self, plugin):
         """Test that logger plugin handles task errors correctly with threading runner."""

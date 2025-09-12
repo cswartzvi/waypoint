@@ -621,10 +621,11 @@ class TestFlowSession:
         def failing_submitted_task() -> None:
             raise ConnectionError("Submitted task failed")
 
-        # Test with sequential runner (should fail on submission)
+        # Test with sequential runner (now defers execution like threading)
         with flow_session(name="submit_fail_sequential", task_runner="sequential"):
+            future = submit_task(failing_submitted_task)
             with pytest.raises(TaskRunError, match="Submitted task failed"):
-                future = submit_task(failing_submitted_task)
+                future.result()
 
         # Test with threading runner
         with flow_session(name="submit_fail_threading", task_runner="threading"):

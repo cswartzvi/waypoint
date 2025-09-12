@@ -108,15 +108,9 @@ class TestRunnerSubmit:
             raise ValueError("Test error")
 
         with runner.start():
-            if isinstance(runner, SequentialTaskRunner):
-                # Sequential runner executes immediately, so exception is raised during submit
-                with pytest.raises(ValueError, match="Test error"):
-                    runner.submit(failing_task)
-            else:
-                # Other runners defer execution, so exception is raised during result()
-                future = runner.submit(failing_task)
-                with pytest.raises(ValueError, match="Test error"):
-                    future.result()
+            future = runner.submit(failing_task)
+            with pytest.raises(ValueError, match="Test error"):
+                future.result()
 
     def test_submit_multiple_tasks(self, runner):
         """Test submitting multiple tasks and verifying all complete."""

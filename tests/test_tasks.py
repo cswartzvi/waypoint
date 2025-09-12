@@ -544,9 +544,10 @@ class TestTaskSubmission:
         def error_task() -> None:
             raise RuntimeError("Submitted task error")
 
-        # With proper deferred execution, submit returns immediately
+        # With deferred execution, exception happens on result() call
+        future = submit_task(error_task)
         with pytest.raises(RuntimeError, match="Submitted task error"):
-            _ = submit_task(error_task)
+            future.result()
 
     @pytest.mark.noautouse
     def test_submit_task_outside_flow_context_raises(self):
