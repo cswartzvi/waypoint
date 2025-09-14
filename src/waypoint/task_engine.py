@@ -295,7 +295,7 @@ class SyncGeneratorTaskRunEngine(_BaseSyncTaskRunEngine[P, Generator[R, None, No
         for idx, item in enumerate(items):
             self.process_result(item, iteration=idx)
             end_time = datetime.now()
-            duration = format_duration(intermediate, datetime.now())
+            duration = format_duration(intermediate, end_time)
             yield item
             self._run_hook("after_task_iteration", result=item, index=idx)
             logger.info("Completed iteration %d in %s", idx, duration)
