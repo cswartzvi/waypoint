@@ -273,7 +273,7 @@ class TestFlowExecution:
         def failing_flow() -> None:
             raise ValueError("Flow failed")
 
-        with pytest.raises(ValueError, match="Flow failed"):
+        with pytest.raises(FlowRunError, match="Flow failed"):
             failing_flow()
 
     def test_sync_generator_flow_exception_propagation(self):
@@ -297,7 +297,7 @@ class TestFlowExecution:
             await asyncio.sleep(0.01)
             raise ValueError("Async flow failed")
 
-        with pytest.raises(ValueError, match="Async flow failed"):
+        with pytest.raises(FlowRunError, match="Async flow failed"):
             asyncio.run(async_failing_flow())
 
     def test_async_generator_flow_exception_propagation(self):

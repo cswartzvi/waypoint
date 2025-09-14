@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from dataclasses import field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -9,7 +10,7 @@ else:
     TaskData = Any
 
 
-@dataclass(frozen=True)
+@dataclass
 class TaskRun:
     """Data about a specific execution of a Waypoint task."""
 
@@ -24,6 +25,12 @@ class TaskRun:
 
     parameters: dict[str, Any] = field(default_factory=dict)
     """Parameters passed to the flow run."""
+
+    start_time: datetime | None = None
+    """Timestamp when the task run started execution."""
+
+    end_time: datetime | None = None
+    """Timestamp when the task run finished execution."""
 
 
 def create_task_run(task_data: TaskData, parameters: dict[str, Any] | None = None) -> TaskRun:

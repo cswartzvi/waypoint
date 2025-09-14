@@ -2,11 +2,13 @@ from collections.abc import AsyncGenerator
 from collections.abc import Generator
 from contextlib import AsyncExitStack
 from contextlib import ExitStack
+from contextlib import _BaseExitStack
 from contextlib import asynccontextmanager
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
-from functools import cached_property
+from datetime import datetime
+from logging import Logger
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,10 +24,12 @@ from typing import (
 from waypoint.context import TaskRunContext
 from waypoint.exceptions import TaskRunError
 from waypoint.hooks.manager import get_hook_manager
+from waypoint.logging import get_run_logger
 from waypoint.task_run import TaskRun
 from waypoint.tasks import TaskData
 from waypoint.utils.callables import call_with_arguments
 from waypoint.utils.collections import aenumerate
+from waypoint.utils.timing import format_duration
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -52,8 +56,8 @@ def run_task_sync(task_function: Callable[P, R], task_data: TaskData, task_run: 
         The result of the task execution.
     """
     engine = SyncTaskRunEngine(task_function=task_function, task_data=task_data, task_run=task_run)
-    with engine.initialize():
-        return engine.call()
+    with engine.setup_run_context():
+        return engine.run()
 
 
 def run_generator_task_sync(
@@ -79,8 +83,8 @@ def run_generator_task_sync(
         task_run=task_run,
         _log_iterations=_log_iterations,
     )
-    with engine.initialize():
-        yield from engine.call()
+    with engine.setup_run_context():
+        yield from engine.run()
 
 
 def consume_generator_task_sync(
@@ -122,8 +126,8 @@ async def run_task_async(
         A coroutine that resolves to the result of the task execution.
     """
     engine = AsyncTaskRunEngine(task_function=task_function, task_data=task_data, task_run=task_run)
-    async with engine.initialize():
-        return await engine.call_task_fn()
+    async with engine.setup_run_context():
+        return await engine.run()
 
 
 async def run_generator_task_async(
@@ -149,8 +153,8 @@ async def run_generator_task_async(
         task_run=task_run,
         _log_iterations=_log_iterations,
     )
-    async with engine.initialize():
-        async for item in engine.call():
+    async with engine.setup_run_context():
+        async for item in engine.run():
             yield item
 
 
@@ -187,12 +191,11 @@ class _BaseTaskRunEngine(Generic[P, R]):
     task_data: TaskData
     task_run: TaskRun
 
-    # The following attributes are set during initialization
     initialized: bool = field(init=False, default=False)
+    _hook_manager: PluginManager = field(init=False, default_factory=get_hook_manager)
 
-    @cached_property
-    def _hook_manager(self) -> PluginManager:
-        return get_hook_manager()
+    # NOTE: Logger for the current run context prior to initialization
+    _logger: Logger = field(init=False, default_factory=lambda: get_run_logger("engine"))
 
     def _run_hook(self, hook_name: str, **kwargs: Any) -> None:
         """
@@ -206,6 +209,32 @@ class _BaseTaskRunEngine(Generic[P, R]):
         kwargs.setdefault("task_run", self.task_run)
         try_run_hook(manager=self._hook_manager, hook_name=hook_name, **kwargs)
 
+    @contextmanager
+    def _initialize_run(self, stack: _BaseExitStack) -> Iterator[None]:
+        """Adds items to the given context stack to initialize the task run."""
+        task_run_context = TaskRunContext(task_data=self.task_data, task_run=self.task_run)
+        stack.enter_context(task_run_context)
+
+        try:
+            self._run_hook("before_task_run")
+            self.task_run.start_time = datetime.now()
+            self._logger.debug("Beginning task run %s", self.task_run.task_id)
+            self.initialized = True
+            yield
+
+        except Exception as error:
+            self._run_hook("after_task_run", result=None, error=error)
+            self._logger.error("Task run %s failed with error: %s", self.task_run.task_id, error)
+            raise TaskRunError(self.task_run.task_id, error) from None
+        else:
+            # NOTE: When successful, the after_task_run hook should be called in the run
+            # method to ensure it is with the final result of the task.
+            self.task_run.end_time = datetime.now()
+            duration = format_duration(self.task_run.start_time, self.task_run.end_time)
+            self._logger.info("Completed task run %s in %s", self.task_run.task_id, duration)
+
+        self.initialized = False
+
 
 # region Engine: Sync
 
@@ -215,18 +244,13 @@ class _BaseSyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
     """Base class for synchronous task run engines."""
 
     @contextmanager
-    def initialize(self) -> Iterator[None]:
+    def setup_run_context(self) -> Iterator[None]:
         """Initialize the task run engine, sets attributes and validates state."""
         with ExitStack() as stack:
-            task_run_context = TaskRunContext(task_data=self.task_data, task_run=self.task_run)
-            stack.enter_context(task_run_context)
-
-            self.initialized = True
+            stack.enter_context(self._initialize_run(stack))
             yield
 
-        self.initialized = False
-
-    def process(self, result: Any, iteration: int | None = None) -> None:
+    def process_result(self, result: Any, iteration: int | None = None) -> None:
         """
         Handle the successful completion of the task.
 
@@ -241,23 +265,14 @@ class _BaseSyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
 class SyncTaskRunEngine(_BaseSyncTaskRunEngine[P, R]):
     """Synchronous task run engine for blocking task execution."""
 
-    def call(self) -> R:
-        """Calls the task function with the provided parameters."""
+    def run(self) -> R:
+        """Runs the task function with the provided parameters."""
         if not self.initialized:  # pragma: no cover
             raise RuntimeError("Task engine must be initialized before starting context.")
 
-        self._run_hook("before_task_run")
-        result, error = None, None
-        try:
-            result = call_with_arguments(self.task_function, self.task_run.parameters)
-        except Exception as exception:
-            error = TaskRunError(f"Error during task run: {exception}", exc=exception)
-        finally:
-            self._run_hook("after_task_run", result=result, error=error)
-            if error:
-                raise error from None
-
-        self.process(result)
+        result = call_with_arguments(self.task_function, self.task_run.parameters)
+        self._run_hook("after_task_run", result=result, error=None)
+        self.process_result(result)
         return cast(R, result)
 
 
@@ -267,26 +282,26 @@ class SyncGeneratorTaskRunEngine(_BaseSyncTaskRunEngine[P, Generator[R, None, No
 
     _log_iterations: bool = True
 
-    def call(self) -> Generator[R, None, None]:
-        """Calls the task function with the provided parameters."""
+    def run(self) -> Generator[R, None, None]:
+        """Runs the task function with the provided parameters."""
         if not self.initialized:  # pragma: no cover
             raise RuntimeError("Task engine must be initialized before starting context.")
 
-        self._run_hook("before_task_run")
-        error = None
-        try:
-            items = call_with_arguments(self.task_function, self.task_run.parameters)
-            for idx, item in enumerate(items):
-                if self._log_iterations:
-                    self._run_hook("after_task_iteration", result=item, index=idx)
-                self.process(item, iteration=idx)
-                yield item
-        except Exception as exception:
-            error = exception
-        finally:
-            self._run_hook("after_task_run", result=None, error=error)
-            if error:
-                raise error from None
+        # NOTE: Logger and intermediate time must be refresh to ensure correct task context
+        logger = get_run_logger()
+        intermediate = datetime.now()
+
+        items = call_with_arguments(self.task_function, self.task_run.parameters)
+        for idx, item in enumerate(items):
+            self.process_result(item, iteration=idx)
+            end_time = datetime.now()
+            duration = format_duration(intermediate, datetime.now())
+            yield item
+            self._run_hook("after_task_iteration", result=item, index=idx)
+            logger.info("Completed iteration %d in %s", idx, duration)
+            intermediate = end_time
+
+        self._run_hook("after_task_run", result=None, error=None)
 
 
 # region Engine: Async
@@ -297,18 +312,13 @@ class _BaseAsyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
     """Base class for asynchronous task run engines."""
 
     @asynccontextmanager
-    async def initialize(self) -> AsyncGenerator[None, None]:
+    async def setup_run_context(self) -> AsyncGenerator[None, None]:
         """Initialize the task run engine, sets attributes and validates state."""
         async with AsyncExitStack() as stack:
-            task_run_context = TaskRunContext(task_data=self.task_data, task_run=self.task_run)
-            stack.enter_context(task_run_context)
-
-            self.initialized = True
+            stack.enter_context(self._initialize_run(stack))
             yield
 
-        self.initialized = False
-
-    async def process(self, result: Any, iteration: int | None = None) -> None:
+    async def process_result(self, result: Any, iteration: int | None = None) -> None:
         """
         Handle the successful completion of the task.
 
@@ -323,22 +333,14 @@ class _BaseAsyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
 class AsyncTaskRunEngine(_BaseAsyncTaskRunEngine[P, Coroutine[Any, Any, R]]):
     """Asynchronous task run engine for non-blocking task execution."""
 
-    async def call_task_fn(self) -> R:
-        """Calls the task function with the provided parameters."""
+    async def run(self) -> R:
+        """Runs the task function with the provided parameters."""
         if not self.initialized:  # pragma: no cover
             raise RuntimeError("Task run engine must be initialized before starting context.")
 
-        self._run_hook("before_task_run")
-        result, error = None, None
-        try:
-            result = await call_with_arguments(self.task_function, self.task_run.parameters)
-        except Exception as exception:
-            error = TaskRunError(f"Error during task run: {exception}", exc=exception)
-        finally:
-            self._run_hook("after_task_run", result=result, error=error)
-            if error:
-                raise error from None
-        await self.process(result)
+        result = await call_with_arguments(self.task_function, self.task_run.parameters)
+        self._run_hook("after_task_run", result=result, error=None)
+        await self.process_result(result)
         return cast(R, result)
 
 
@@ -348,23 +350,23 @@ class AsyncGeneratorTaskRunEngine(_BaseAsyncTaskRunEngine[P, AsyncGenerator[R, N
 
     _log_iterations: bool = True
 
-    async def call(self) -> AsyncGenerator[R, None]:
-        """Calls the task function with the provided parameters."""
+    async def run(self) -> AsyncGenerator[R, None]:
+        """Runs the task function with the provided parameters."""
         if not self.initialized:  # pragma: no cover
             raise RuntimeError("Task run engine must be initialized before starting context.")
 
-        self._run_hook("before_task_run")
-        error = None
-        try:
-            items = call_with_arguments(self.task_function, self.task_run.parameters)
-            async for idx, item in aenumerate(items):
-                if self._log_iterations:
-                    self._run_hook("after_task_iteration", result=item, index=idx)
-                await self.process(item, iteration=idx)
-                yield item
-        except Exception as exc:
-            error = exc
-        finally:
-            self._run_hook("after_task_run", result=None, error=error)
-            if error:
-                raise error from None
+        # NOTE: Logger and intermediate time must be refresh to ensure correct task context
+        logger = get_run_logger()
+        intermediate = datetime.now()
+
+        items = call_with_arguments(self.task_function, self.task_run.parameters)
+        async for idx, item in aenumerate(items):
+            await self.process_result(item, iteration=idx)
+            end_time = datetime.now()
+            duration = format_duration(intermediate, end_time)
+            yield item
+            self._run_hook("after_task_iteration", result=item, index=idx)
+            logger.info("Completed iteration %d in %s", idx, duration)
+            intermediate = end_time
+
+        self._run_hook("after_task_run", result=None, error=None)
