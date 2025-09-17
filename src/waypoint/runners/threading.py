@@ -13,6 +13,7 @@ from typing_extensions import Self, override
 
 from waypoint.exceptions import TaskRunError
 from waypoint.futures import TaskFuture
+from waypoint.logging import setup_worker_logging
 from waypoint.runners.base import BaseTaskRunner
 from waypoint.runners.base import DefaultTaskRunners
 from waypoint.runners.base import EventLike
@@ -65,6 +66,7 @@ class ThreadingTaskRunner(BaseTaskRunner):
 
     @override
     def _setup_context(self, stack: ExitStack) -> None:
+        super()._setup_context(stack)
         stack.enter_context(log_execution(self.name, self.logger))
         self._event = Event()
         self._executor = concurrent.futures.ThreadPoolExecutor(
@@ -94,11 +96,20 @@ class ThreadingTaskRunner(BaseTaskRunner):
         context = copy_context()
         context_run: Callable[..., Any] = context.run  # Appeases mypy
 
+        def _run_with_logging(target: Callable[..., Any], *args: Any) -> Any:
+            setup_worker_logging(self.log_queue)
+            return target(*args)
+
         future: concurrent.futures.Future[Any]
         if inspect.iscoroutinefunction(func):
-            future = self._executor.submit(context_run, asyncio.run, func())
+            future = self._executor.submit(
+                context_run,
+                _run_with_logging,
+                asyncio.run,
+                func(),
+            )
         else:
-            future = self._executor.submit(context_run, func)
+            future = self._executor.submit(context_run, _run_with_logging, func)
 
         task_future = TaskFuture(future)
         key = uuid4()

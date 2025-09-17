@@ -430,8 +430,19 @@ def _submit_task(
             return task_runner.submit(wrapper)
 
     future = task_runner.submit(wrapper)
-    future.add_done_callback(_future_callback_wrapper(task_data, task_run, task_runner, logger))
+    future.add_done_callback(
+        _queue_task_result(task_runner, task_data, task_run, logger)
+    )
     return future
+
+
+@dataclass(slots=True)
+class TaskResultMessage:
+    task_data: "TaskData"
+    task_run: "TaskRun"
+    task_runner_name: str
+    future: Future
+    logger: Logger
 
 
 def _create_best_effort_task_data(func: Callable[..., Any]) -> "TaskData":
@@ -498,35 +509,49 @@ def _async_submit_wrapper(
     return async_task_wrapper
 
 
-def _future_callback_wrapper(
-    task_data: "TaskData",
-    task_run: TaskRun,
+def _queue_task_result(
     task_runner: BaseTaskRunner,
+    task_data: "TaskData",
+    task_run: "TaskRun",
     logger: Logger,
 ) -> Callable[[Future], None]:
-    """Create a callback wrapper to run after a task future is completed."""
-    from waypoint.hooks.manager import try_run_hook
-
-    def callback(future: Future) -> None:
-        # NOTE: It is expected that all warning/error logging is done in the task engine.
-        message = f"Task '{task_run.task_id}' returned from runner '{task_runner}'"
-        if future.cancelled():  # pragma: no cover
-            message = f"Task '{task_run.task_id}' was cancelled in runner '{task_runner}'"
-        elif future.exception() is not None:
-            message = f"Task '{task_run.task_id}' raised an exception in runner '{task_runner}'"
-        logger.debug(message)
-
-        result = future.result() if not future.cancelled() and not future.exception() else None
-        try_run_hook(
-            hook_name="after_task_future_result",
+    def _callback(future: Future) -> None:
+        message = TaskResultMessage(
             task_data=task_data,
             task_run=task_run,
-            error=future.exception(),
-            cancelled=future.cancelled(),
-            result=result,
-            task_runner=task_runner.name,
+            task_runner_name=task_runner.name,
+            future=future,
+            logger=logger,
         )
+        task_runner.enqueue_completed_task(message)
 
-        # TODO: Process results here
+    return _callback
 
-    return callback
+
+def process_task_result(message: TaskResultMessage) -> None:
+    from waypoint.hooks.manager import try_run_hook
+
+    future = message.future
+    task_run = message.task_run
+    logger = message.logger
+
+    cancelled = future.cancelled()
+    error = future.exception()
+
+    text = f"Task '{task_run.task_id}' returned from runner '{message.task_runner_name}'"
+    if cancelled:  # pragma: no cover
+        text = f"Task '{task_run.task_id}' was cancelled in runner '{message.task_runner_name}'"
+    elif error is not None:
+        text = f"Task '{task_run.task_id}' raised an exception in runner '{message.task_runner_name}'"
+    logger.debug(text)
+
+    result = future.result() if not cancelled and error is None else None
+    try_run_hook(
+        hook_name="after_task_future_result",
+        task_data=message.task_data,
+        task_run=task_run,
+        error=error,
+        cancelled=cancelled,
+        result=result,
+        task_runner=message.task_runner_name,
+    )

@@ -9,9 +9,10 @@ from collections import defaultdict
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final, Iterator, cast
+from typing import Any, Final, Iterator, Mapping, MutableMapping, cast
 
 from waypoint.exceptions import MissingContextError
+
 
 # Define base logger names
 _BASE_LOGGER = "waypoint"
@@ -35,6 +36,89 @@ _FILE_FORMATS: dict[str, str] = {
     "waypoint.flow": _BASE_FILE_FORMAT + " %(name)s '%(flow_run_name)s' - %(message)s",
     "waypoint.task": _BASE_FILE_FORMAT + " %(name)s '%(task_run_name)s' - %(message)s",
 }
+
+_QUEUE_HANDLER_NAME = "waypoint.log_queue"
+
+
+class WaypointLogAdapter(logging.LoggerAdapter[logging.Logger]):
+    """
+    Adapter that ensures extra kwargs are passed through correctly.
+
+    Without this, the `extra` fields set on the adapter would overshadow any provided
+    on a log-by-log basis.
+
+    See https://bugs.python.org/issue32732 — the Python team has declared that this is
+    not a bug in the LoggingAdapter and subclassing is the intended workaround.
+    """
+
+    def process(
+        self, msg: str, kwargs: MutableMapping[str, Any]
+    ) -> tuple[str, MutableMapping[str, Any]]:
+        """Process the logging call to merge extra context correctly."""
+        # Merge adapter's extra with call-specific extra, preferring call-specific
+        kwargs["extra"] = {**(self.extra or {}), **(kwargs.get("extra") or {})}
+        return (msg, kwargs)
+
+    def getChild(self, suffix: str, extra: dict[str, Any] | None = None) -> "WaypointLogAdapter":
+        """Create a child adapter with merged extra context."""
+        _extra: dict[str, Any] = extra or {}
+
+        return WaypointLogAdapter(
+            self.logger.getChild(suffix),
+            extra={
+                **(self.extra or {}),
+                **_extra,
+            },
+        )
+
+
+class _LogForwarder:
+    """Context manager that forwards log records from a queue to configured handlers."""
+
+    def __init__(self, q: QueueType) -> None:
+        self._queue = q
+        self._consumer_ctx: ContextManager[Any] | None = None
+        self._queue_handler = logging.handlers.QueueHandler(q)
+        self._queue_handler.set_name("waypoint.log_queue")
+        self._logger_handlers: dict[logging.Logger, list[logging.Handler]] = {}
+        self._handlers: list[logging.Handler] = []
+
+    def __enter__(self) -> "_LogForwarder":
+        loggers = iter_waypoint_loggers()
+        for logger in loggers:
+            handlers = list(logger.handlers)
+            self._logger_handlers[logger] = handlers
+            for handler in handlers:
+                if handler not in self._handlers:
+                    self._handlers.append(handler)
+            logger.handlers.clear()
+            logger.addHandler(self._queue_handler)
+
+        consumer = (
+            self._queue.consumer(self._emit_record)
+            if isinstance(self._queue, ImmediateQueue)
+            else _queue_consumer_context(
+                self._queue,
+                self._emit_record,
+                name="waypoint-log-consumer",
+            )
+        )
+        self._consumer_ctx = consumer
+        self._consumer_ctx.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._consumer_ctx is not None:
+            self._consumer_ctx.__exit__(exc_type, exc, tb)
+        for logger, handlers in self._logger_handlers.items():
+            logger.handlers = [
+                handler for handler in logger.handlers if handler is not self._queue_handler
+            ]
+            logger.handlers[:0] = handlers
+
+    def _emit_record(self, record: logging.LogRecord) -> None:
+        for handler in self._handlers:
+            handler.handle(record)
 
 
 @lru_cache()
@@ -80,13 +164,13 @@ def get_run_logger(default: str | None = None) -> logging.Logger:
     task_run = task_run_context.task_run if task_run_context else None
     flow_run = flow_run_context.flow_run if flow_run_context else None
 
-    logger: logging.Logger | logging.LoggerAdapter[Any]
+    logger: logging.Logger | WaypointLogAdapter
     if task_run:
         logger = logging.getLogger(_TASK_LOGGER)
-        logger = logging.LoggerAdapter(logger, {"task_run_name": task_run.task_id})
+        logger = WaypointLogAdapter(logger, {"task_run_name": task_run.task_id})
     elif flow_run:
         logger = logging.getLogger(_FLOW_LOGGER)
-        logger = logging.LoggerAdapter(logger, {"flow_run_name": flow_run.name})
+        logger = WaypointLogAdapter(logger, {"flow_run_name": flow_run.name})
     elif default is not None:
         logger = get_logger(default)
     else:
@@ -161,6 +245,32 @@ def setup_file_logging(base: Path, level: int = logging.INFO) -> None:
     return
 
 
+def setup_worker_logging(queue: Any, *, extra_context: Mapping[str, Any] | None = None) -> None:
+    """Attach a queue handler to all Waypoint loggers for worker execution."""
+    if queue is None:
+        return
+
+    _setup_app_loggers()
+
+    class _ContextFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            # pragma: no cover - simple passthrough
+            if extra_context:
+                for key, value in extra_context.items():
+                    setattr(record, key, value)
+            return True
+
+    for logger in iter_waypoint_loggers():
+        if any(handler.name == _QUEUE_HANDLER_NAME for handler in logger.handlers):
+            continue
+
+        handler = logging.handlers.QueueHandler(queue)
+        handler.set_name(_QUEUE_HANDLER_NAME)
+        if extra_context:
+            handler.addFilter(_ContextFilter())
+        logger.addHandler(handler)
+
+
 @contextmanager
 def patch_print(enable: bool = True) -> Iterator[None]:
     """
@@ -190,6 +300,12 @@ def _setup_app_loggers(level: Any = logging.DEBUG) -> None:
         logger = logging.getLogger(name)
         logger.propagate = False
         logger.setLevel(level)
+
+
+def iter_waypoint_loggers() -> list[logging.Logger]:
+    """Return the configured Waypoint loggers."""
+    _setup_app_loggers()
+    return [logging.getLogger(name) for name in _APP_LOGGERS]
 
 
 def _console_handler(format: str, traceback: bool, use_rich: bool) -> logging.Handler:
