@@ -24,7 +24,7 @@ from typing import (
 from typing_extensions import Self
 
 from waypoint.futures import TaskFuture
-from waypoint.logging import get_logger
+from waypoint.logging import LogForwarder, get_logger
 from waypoint.logging import iter_waypoint_loggers
 
 R = TypeVar("R")
@@ -75,20 +75,6 @@ def create_runner_queues(
         result_queue or _create_queue(kind),
     )
 
-
-def _create_queue(kind: DefaultTaskRunner | str) -> QueueType:
-    if kind == "sequential":
-        return ImmediateQueue()
-    if kind == "threading":
-        return queue.Queue()
-    if kind == "multiprocessing":
-        from multiprocessing import Queue
-
-        return Queue()
-    raise ValueError(f"Unknown queue kind: {kind}")
-
-
-_QUEUE_SENTINEL = object()
 
 
 def _close_queue(q: QueueType) -> None:
@@ -205,7 +191,7 @@ class BaseTaskRunner(metaclass=abc.ABCMeta):
         log_queue, result_queue = create_runner_queues(self.type)
         self._log_queue = log_queue
         self._result_queue = result_queue
-        stack.enter_context(_LogForwarder(log_queue))
+        stack.enter_context(LogForwarder(log_queue))
         stack.enter_context(
             _queue_consumer_context(
                 result_queue,

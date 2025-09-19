@@ -9,9 +9,12 @@ from collections import defaultdict
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final, Iterator, Mapping, MutableMapping, cast
+from typing import Any, ContextManager, Final, Iterator, Mapping, MutableMapping, cast
 
 from waypoint.exceptions import MissingContextError
+from waypoint.runners.queues import ConsumerQueue
+
+_LOGGER = logging.getLogger(__name__)
 
 
 # Define base logger names
@@ -40,7 +43,7 @@ _FILE_FORMATS: dict[str, str] = {
 _QUEUE_HANDLER_NAME = "waypoint.log_queue"
 
 
-class WaypointLogAdapter(logging.LoggerAdapter[logging.Logger]):
+class EnhancedLoggerAdapter(logging.LoggerAdapter[logging.Logger]):
     """
     Adapter that ensures extra kwargs are passed through correctly.
 
@@ -59,11 +62,11 @@ class WaypointLogAdapter(logging.LoggerAdapter[logging.Logger]):
         kwargs["extra"] = {**(self.extra or {}), **(kwargs.get("extra") or {})}
         return (msg, kwargs)
 
-    def getChild(self, suffix: str, extra: dict[str, Any] | None = None) -> "WaypointLogAdapter":
+    def getChild(self, suffix: str, extra: dict[str, Any] | None = None) -> "EnhancedLoggerAdapter":
         """Create a child adapter with merged extra context."""
         _extra: dict[str, Any] = extra or {}
 
-        return WaypointLogAdapter(
+        return EnhancedLoggerAdapter(
             self.logger.getChild(suffix),
             extra={
                 **(self.extra or {}),
@@ -72,44 +75,53 @@ class WaypointLogAdapter(logging.LoggerAdapter[logging.Logger]):
         )
 
 
-class _LogForwarder:
+class LogForwarder:
     """Context manager that forwards log records from a queue to configured handlers."""
 
-    def __init__(self, q: QueueType) -> None:
+    def __init__(self, q: ConsumerQueue) -> None:
         self._queue = q
         self._consumer_ctx: ContextManager[Any] | None = None
-        self._queue_handler = logging.handlers.QueueHandler(q)
+        self._queue_handler = logging.handlers.QueueHandler(q)  # type: ignore[arg-type]
         self._queue_handler.set_name("waypoint.log_queue")
         self._logger_handlers: dict[logging.Logger, list[logging.Handler]] = {}
         self._handlers: list[logging.Handler] = []
 
-    def __enter__(self) -> "_LogForwarder":
+    def __enter__(self) -> "LogForwarder":
         loggers = iter_waypoint_loggers()
         for logger in loggers:
+            # Collect existing handlers
             handlers = list(logger.handlers)
             self._logger_handlers[logger] = handlers
             for handler in handlers:
                 if handler not in self._handlers:
                     self._handlers.append(handler)
+
+            # Replace existing handlers with the queue handler
             logger.handlers.clear()
             logger.addHandler(self._queue_handler)
 
-        consumer = (
-            self._queue.consumer(self._emit_record)
-            if isinstance(self._queue, ImmediateQueue)
-            else _queue_consumer_context(
-                self._queue,
-                self._emit_record,
-                name="waypoint-log-consumer",
-            )
-        )
-        self._consumer_ctx = consumer
-        self._consumer_ctx.__enter__()
+        # Activate the consumer context
+        self._consumer_ctx = self._queue.consumer(self._emit_record)
+        try:
+            self._consumer_ctx.__enter__()
+        except Exception:
+            self._restore_handlers()
+            raise
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        # Stop consumer first (with error handling)
         if self._consumer_ctx is not None:
-            self._consumer_ctx.__exit__(exc_type, exc, tb)
+            try:
+                self._consumer_ctx.__exit__(exc_type, exc, tb)
+            except Exception as e:
+                logging.getLogger(__name__).exception("Error stopping log consumer: %s", e)
+
+        # Always restore handlers
+        self._restore_handlers()
+
+    def _restore_handlers(self) -> None:
+        """Restore original handlers to loggers."""
         for logger, handlers in self._logger_handlers.items():
             logger.handlers = [
                 handler for handler in logger.handlers if handler is not self._queue_handler
@@ -117,8 +129,15 @@ class _LogForwarder:
             logger.handlers[:0] = handlers
 
     def _emit_record(self, record: logging.LogRecord) -> None:
+        """Emit log record to all captured handlers."""
         for handler in self._handlers:
-            handler.handle(record)
+            try:
+                handler.handle(record)
+            except Exception as e:
+                # Don't let handler errors crash the log forwarder
+                logging.getLogger(__name__).exception(
+                    "Error in log handler %s: %s", handler.name, e
+                )
 
 
 @lru_cache()
@@ -164,13 +183,13 @@ def get_run_logger(default: str | None = None) -> logging.Logger:
     task_run = task_run_context.task_run if task_run_context else None
     flow_run = flow_run_context.flow_run if flow_run_context else None
 
-    logger: logging.Logger | WaypointLogAdapter
+    logger: logging.Logger | EnhancedLoggerAdapter
     if task_run:
         logger = logging.getLogger(_TASK_LOGGER)
-        logger = WaypointLogAdapter(logger, {"task_run_name": task_run.task_id})
+        logger = EnhancedLoggerAdapter(logger, {"task_run_name": task_run.task_id})
     elif flow_run:
         logger = logging.getLogger(_FLOW_LOGGER)
-        logger = WaypointLogAdapter(logger, {"flow_run_name": flow_run.name})
+        logger = EnhancedLoggerAdapter(logger, {"flow_run_name": flow_run.name})
     elif default is not None:
         logger = get_logger(default)
     else:
