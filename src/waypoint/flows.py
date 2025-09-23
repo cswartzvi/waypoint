@@ -21,7 +21,76 @@ else:
 P = ParamSpec("P")
 R = TypeVar("R")
 
-# region Flows
+
+# region Metadata
+
+
+@dataclass(frozen=True)
+class FlowData:
+    """Data about a Waypoint workflow without the execution logic."""
+
+    name: str
+    """Name of the workflow."""
+
+    task_runner: BaseTaskRunner
+    """The task runner used to execute tasks in this workflow."""
+
+    is_async: bool
+    """True if the flow is async (coroutine or async generator), False otherwise."""
+
+    is_generator: bool
+    """True if the flow is a generator (sync or async), False otherwise."""
+
+    log_prints: bool = False
+    """Whether to log print statements during the flow run."""
+
+
+def _add_flow_data(func: Callable[P, R], flow_data: FlowData) -> Callable[P, R]:
+    """Attach flow metadata to a function."""
+    setattr(func, "__waypoint_flow_data__", flow_data)
+    return func
+
+
+def get_flow_data(func: Callable[P, R]) -> FlowData:
+    """
+    Get flow metadata from a decorated function, raise an exception if not a valid flow.
+
+    Valid flow functions are those decorated with the `@flow` decorator.
+
+    Args:
+        func (Callable[P, R]): Function to get flow data from.
+
+    Raises:
+        InvalidFlowError: If the function is not a valid flow - e.g. not decorated with a `@flow`.
+
+    Returns:
+        Flow data associated with the function.
+    """
+    from waypoint.exceptions import InvalidFlowError
+
+    flow_data = getattr(func, "__waypoint_flow_data__", None)
+    if flow_data is None:
+        name = func.__name__ if hasattr(func, "__name__") else str(func)
+        raise InvalidFlowError(f"Callable '{name}' was not decorated with `@flow`")
+    return flow_data
+
+
+def is_flow(func: Callable[P, R]) -> bool:
+    """
+    Determines if a function is a Waypoint workflow.
+
+    Waypoint workflows are functions decorated with the `@flow` decorator.
+
+    Args:
+        func (Callable[P, R]): Function to check if flow.
+
+    Returns:
+        bool: True if the function is a flow, False otherwise.
+    """
+    return hasattr(func, "__waypoint_flow_data__")
+
+
+# region Decorator
 
 
 @overload
@@ -131,6 +200,9 @@ def flow(
     return decorator(__func)
 
 
+# region Session
+
+
 @contextmanager
 def flow_session(
     name: str = "waypoint-flow-session",
@@ -170,71 +242,3 @@ def flow_session(
 
     with create_flow_session(flow_data=flow_data, flow_run=flow_run) as _:
         yield None
-
-
-# region Metadata
-
-
-@dataclass(frozen=True)
-class FlowData:
-    """Data about a Waypoint workflow without the execution logic."""
-
-    name: str
-    """Name of the workflow."""
-
-    task_runner: BaseTaskRunner
-    """The task runner used to execute tasks in this workflow."""
-
-    is_async: bool
-    """True if the flow is async (coroutine or async generator), False otherwise."""
-
-    is_generator: bool
-    """True if the flow is a generator (sync or async), False otherwise."""
-
-    log_prints: bool = False
-    """Whether to log print statements during the flow run."""
-
-
-def _add_flow_data(func: Callable[P, R], flow_data: FlowData) -> Callable[P, R]:
-    """Attach flow metadata to a function."""
-    setattr(func, "__waypoint_flow_data__", flow_data)
-    return func
-
-
-def get_flow_data(func: Callable[P, R]) -> FlowData:
-    """
-    Get flow metadata from a decorated function, raise an exception if not a valid flow.
-
-    Valid flow functions are those decorated with the `@flow` decorator.
-
-    Args:
-        func (Callable[P, R]): Function to get flow data from.
-
-    Raises:
-        InvalidFlowError: If the function is not a valid flow - e.g. not decorated with a `@flow`.
-
-    Returns:
-        Flow data associated with the function.
-    """
-    from waypoint.exceptions import InvalidFlowError
-
-    flow_data = getattr(func, "__waypoint_flow_data__", None)
-    if flow_data is None:
-        name = func.__name__ if hasattr(func, "__name__") else str(func)
-        raise InvalidFlowError(f"Callable '{name}' was not decorated with `@flow`")
-    return flow_data
-
-
-def is_flow(func: Callable[P, R]) -> bool:
-    """
-    Determines if a function is a Waypoint workflow.
-
-    Waypoint workflows are functions decorated with the `@flow` decorator.
-
-    Args:
-        func (Callable[P, R]): Function to check if flow.
-
-    Returns:
-        bool: True if the function is a flow, False otherwise.
-    """
-    return hasattr(func, "__waypoint_flow_data__")

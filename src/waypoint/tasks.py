@@ -1,6 +1,5 @@
 from collections.abc import AsyncGenerator
 from collections.abc import Generator
-from contextvars import copy_context
 from dataclasses import dataclass
 from dataclasses import field
 from functools import wraps
@@ -9,10 +8,13 @@ from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterator, ParamSpec,
 from waypoint.futures import TaskFuture
 
 if TYPE_CHECKING:
+    from concurrent.futures import Future
+
     from waypoint.runners import BaseTaskRunner
     from waypoint.runners import DefaultTaskRunner
     from waypoint.task_run import TaskRun
 else:
+    Future = Any
     BaseTaskRunner = Any
     DefaultTaskRunner = Any
     TaskRun = Any
@@ -21,8 +23,74 @@ else:
 R = TypeVar("R")
 P = ParamSpec("P")
 
+# region Metadata
 
-# region Tasks
+
+@dataclass(frozen=True)
+class TaskData:
+    """Metadata about a defined Waypoint task."""
+
+    name: str
+    """Name of the task."""
+
+    is_async: bool
+    """True if the task is asynchronous (coroutine or async generator), False otherwise."""
+
+    is_generator: bool
+    """True if the task is a generator (sync or async), False otherwise."""
+
+    _original_function: Callable[..., Any] = field(repr=False, hash=False)
+
+    log_prints: bool = False
+    """Whether to log print statements during the task run."""
+
+
+def _add_task_data(func: Callable[P, R], task_data: TaskData) -> Callable[P, R]:
+    """Attach task metadata to a function."""
+    setattr(func, "__waypoint_task_data__", task_data)
+    return func
+
+
+def get_task_data(func: Callable[P, R]) -> TaskData:
+    """
+    Get task metadata from a decorated function, raise an exception if not a valid task.
+
+    Valid task functions are those decorated with the `@task` decorator.
+
+    Args:
+        func (Callable[P, R]): Function to get task data from.
+
+    Raises:
+        InvalidFlowError: If the function is not a valid task - e.g. not decorated with a `@task`.
+
+    Returns:
+        Task data associated with the function.
+    """
+    from waypoint.exceptions import InvalidTaskError
+
+    task_data = getattr(func, "__waypoint_task_data__", None)
+    if task_data is None:
+        name = func.__name__ if hasattr(func, "__name__") else str(func)
+        raise InvalidTaskError(f"Callable '{name}' was not decorated with `@task`")
+    return task_data
+
+
+def is_task(func: Callable[P, R]) -> bool:
+    """
+    Determines if a function is a Waypoint task.
+
+    Waypoint tasks are functions decorated with the `@task` decorator.
+
+    Args:
+        func (Callable[P, R]): Function to check.
+
+    Returns:
+        bool: True if the function is a task, False otherwise.
+    """
+    return hasattr(func, "__waypoint_task_data__")
+
+
+# region Decorator
 
 
 @overload
@@ -132,6 +200,9 @@ def task(
     return decorator(__func)
 
 
+# region Submit
+
+
 @overload
 def submit_task(
     task: Callable[P, Generator[R, None, None]], *args: P.args, **kwargs: P.kwargs
@@ -191,6 +262,9 @@ def submit_task(task: Callable[..., Any], *args, **kwargs) -> TaskFuture[Any]:
     task_runner = flow_run_context.task_runner
     parameters = get_call_arguments(task, args, kwargs)
     return _submit_task(task_function=task, arguments=parameters, task_runner=task_runner)
+
+
+# region Map
 
 
 @overload
@@ -292,8 +366,7 @@ def map_task(task: Callable[..., Any], *args: Any, **kwargs: Any) -> Iterator[An
         call_args: dict[str, Any] = {key: value[i] for key, value in iterable_arguments.items()}
         call_args.update({key: value for key, value in static_arguments.items()})
 
-        # Add default values for parameters; these are skipped earlier since they should
-        # not be mapped over
+        # Add default values for parameters; these were skipped previously
         for key, value in get_parameter_defaults(task).items():
             call_args.setdefault(key, value)
 
@@ -305,6 +378,79 @@ def map_task(task: Callable[..., Any], *args: Any, **kwargs: Any) -> Iterator[An
 
     for future in futures:
         yield future.result()
+
+
+# region Internal
+
+
+def _submit_task(
+    task_function: Callable[..., R], arguments: dict[str, Any], task_runner: BaseTaskRunner
+) -> TaskFuture[R]:
+    """Internal implementation - submit a task function and arguments to a specified task runner."""
+    from waypoint.context import TaskRunContext
+    from waypoint.hooks.manager import try_run_hook
+    from waypoint.logging import get_run_logger
+    from waypoint.runners.sequential import SequentialTaskRunner
+    from waypoint.task_engine import consume_generator_task_async
+    from waypoint.task_engine import consume_generator_task_sync
+    from waypoint.task_engine import run_task_async
+    from waypoint.task_engine import run_task_sync
+    from waypoint.task_run import create_task_run
+
+    logger = get_run_logger()
+
+    # Make a best-effort attempt to create task data if task is not valid
+    if not is_task(task_function):
+        task_data = _create_best_effort_task_data(task_function)
+    else:
+        task_data = get_task_data(task_function)
+
+    original_function = task_data._original_function
+    task_run = create_task_run(task_data, arguments)
+
+    params: dict = {
+        "task_function": original_function,
+        "task_data": task_data,
+        "task_run": task_run,
+    }
+    if task_data.is_async:
+        # Wrapper async function to run the task with the task engine. Async generator should be
+        # consumed fully within the wrapper, as task runners expect a final result.
+        @wraps(original_function)
+        async def wrapper() -> Any:  # pyright: ignore
+            if task_data.is_generator:
+                return await consume_generator_task_async(**params)
+            else:
+                return await run_task_async(**params)
+    else:
+        # Wrapper sync function to run the task with the task engine. Generator should be
+        # consumed fully within the wrapper, as task runners expect a final result.
+        @wraps(original_function)
+        def wrapper() -> Any:
+            if task_data.is_generator:
+                return consume_generator_task_sync(**params)
+            else:
+                return run_task_sync(**params)
+
+    logger.debug(f"Submitting task '{task_run.task_id}' to '{task_runner.name}' runner")
+
+    try_run_hook(
+        hook_name="before_task_submit",
+        task_data=task_data,
+        task_run=task_run,
+        task_runner=task_runner.name,
+    )
+
+    # NOTE: Currently, nested tasks only support sequential execution. Changing this would
+    # require a more complex setup that allows tasks to forward a nested tasks to the task runner
+    # defined on the parent flow (possible distributed and many levels up and on).
+    if TaskRunContext.get() is not None:
+        task_runner = SequentialTaskRunner()
+        with task_runner.start():
+            return task_runner.submit(wrapper)
+
+    future = task_runner.submit(wrapper)
+    return future
 
 
 def _create_best_effort_task_data(func: Callable[..., Any]) -> "TaskData":
@@ -321,175 +467,3 @@ def _create_best_effort_task_data(func: Callable[..., Any]) -> "TaskData":
     _add_task_data(func, task_data)
 
     return task_data
-
-
-def _submit_task(
-    task_function: Callable[..., R], arguments: dict[str, Any], task_runner: BaseTaskRunner
-) -> TaskFuture[R]:
-    """Submit a task function with arguments to the specified task runner."""
-    from waypoint.context import TaskRunContext
-    from waypoint.hooks.manager import try_run_hook
-    from waypoint.runners.sequential import SequentialTaskRunner
-    from waypoint.task_run import create_task_run
-
-    # Make a best-effort attempt to create task data if task is not valid
-    if not is_task(task_function):
-        task_data = _create_best_effort_task_data(task_function)
-    else:
-        task_data = get_task_data(task_function)
-
-    task_run = create_task_run(task_data, arguments)
-
-    wrapper: Callable[[], Any]
-    if task_data.is_async:
-        wrapper = _async_submit_wrapper(task_data._original_function, task_data, task_run)
-    else:
-        wrapper = _sync_submit_wrapper(task_data._original_function, task_data, task_run)
-    wrapper = wraps(task_function)(wrapper)
-
-    try_run_hook(
-        hook_name="before_task_submit",
-        task_data=task_data,
-        task_run=task_run,
-        task_runner=task_runner.name,
-    )
-    # NOTE: Currently, nested tasks only support sequential execution. Changing this would
-    # require a more complex setup that allows tasks to forward a nested tasks to the task runner
-    # defined on the parent flow (possible distributed and many levels up and on).
-    if TaskRunContext.get() is not None:
-        task_runner = SequentialTaskRunner()
-        with task_runner.start():
-            return task_runner.submit(wrapper)
-
-    future = task_runner.submit(wrapper)
-
-    context = copy_context()
-    future.add_done_callback(
-        lambda f: context.run(
-            try_run_hook,
-            "after_task_future_result",
-            task_data=task_data,
-            task_run=task_run,
-            error=f.exception(),
-            cancelled=f.cancelled(),
-            result=f.result() if not f.cancelled() and not f.exception() else None,
-            task_runner=task_runner.name,
-        )
-    )
-
-    return future
-
-
-def _sync_submit_wrapper(
-    task_function: Callable[..., R], task_data: "TaskData", task_run: TaskRun
-) -> Callable[[], R]:
-    """Create a synchronous wrapper to submit a task to the task engine."""
-    from waypoint.task_engine import consume_generator_task_sync
-    from waypoint.task_engine import run_task_sync
-
-    engine_params: dict[str, Any] = {
-        "task_function": task_function,
-        "task_data": task_data,
-        "task_run": task_run,
-    }
-
-    # Wrapper sync function to run the task with the task engine. Note that generator should be
-    # consumed fully within the wrapper, as task runners expect a final result (not a generator).
-    def sync_task_wrapper() -> Any:
-        if task_data.is_generator:
-            return consume_generator_task_sync(**engine_params)
-        else:
-            return run_task_sync(**engine_params)
-
-    return sync_task_wrapper
-
-
-def _async_submit_wrapper(
-    task_function: Callable[..., R], task_data: "TaskData", task_run: TaskRun
-) -> Callable[[], Coroutine[Any, Any, R]]:
-    """Create an asynchronous wrapper to submit a task to the task engine."""
-    from waypoint.task_engine import consume_generator_task_async
-    from waypoint.task_engine import run_task_async
-
-    engine_params: dict[str, Any] = {
-        "task_function": task_function,
-        "task_data": task_data,
-        "task_run": task_run,
-    }
-
-    # Wrapper async function to run the task with the task engine. Note that generator should be
-    # consumed fully within the wrapper, as task runners expect a final result (not a generator).
-    async def async_task_wrapper() -> Any:
-        if task_data.is_generator:
-            return await consume_generator_task_async(**engine_params)
-        else:
-            return await run_task_async(**engine_params)
-
-    return async_task_wrapper
-
-
-# region Metadata
-
-
-@dataclass(frozen=True)
-class TaskData:
-    """Metadata about a defined Waypoint task."""
-
-    name: str
-    """Name of the task."""
-
-    is_async: bool
-    """True if the task is asynchronous (coroutine or async generator), False otherwise."""
-
-    is_generator: bool
-    """True if the task is a generator (sync or async), False otherwise."""
-
-    _original_function: Callable[..., Any] = field(repr=False, hash=False)
-
-    log_prints: bool = False
-    """Whether to log print statements during the task run."""
-
-
-def _add_task_data(func: Callable[P, R], task_data: TaskData) -> Callable[P, R]:
-    """Attach task metadata to a function."""
-    setattr(func, "__waypoint_task_data__", task_data)
-    return func
-
-
-def get_task_data(func: Callable[P, R]) -> TaskData:
-    """
-    Get task metadata from a decorated function, raise an exception if not a valid task.
-
-    Valid task functions are those decorated with the `@task` decorator.
-
-    Args:
-        func (Callable[P, R]): Function to get task data from.
-
-    Raises:
-        InvalidFlowError: If the function is not a valid task - e.g. not decorated with a `@task`.
-
-    Returns:
-        Task data associated with the function.
-    """
-    from waypoint.exceptions import InvalidTaskError
-
-    task_data = getattr(func, "__waypoint_task_data__", None)
-    if task_data is None:
-        name = func.__name__ if hasattr(func, "__name__") else str(func)
-        raise InvalidTaskError(f"Callable '{name}' was not decorated with `@task`")
-    return task_data
-
-
-def is_task(func: Callable[P, R]) -> bool:
-    """
-    Determines if a function is a Waypoint task.
-
-    Waypoint tasks are functions decorated with the `@task` decorator.
-
-    Args:
-        func (Callable[P, R]): Function to check.
-
-    Returns:
-        bool: True if the function is a task, False otherwise.
-    """
-    return hasattr(func, "__waypoint_task_data__")

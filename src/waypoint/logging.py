@@ -2,22 +2,76 @@
 
 import io
 import logging
+import logging.handlers
 import sys
 from builtins import print  # required for patching
+from collections import defaultdict
 from contextlib import contextmanager
 from functools import lru_cache
-from typing import Any, Iterator, Literal, cast
+from pathlib import Path
+from typing import Any, Final, Iterator, MutableMapping, cast
 
 from waypoint.exceptions import MissingContextError
 
-LOGGERS = Literal["waypoint", "waypoint.flow", "waypoint.task"]
-"""Base logger names used by Waypoint."""
+_LOGGER = logging.getLogger(__name__)
 
-# NOTE: Python `Literal` can not contain variables, therefore we must also define variables
-# for the base loggers. The value of these variables MUST match the values in `LOGGERS`.
+
+# Define base logger names
 _BASE_LOGGER = "waypoint"
 _FLOW_LOGGER = f"{_BASE_LOGGER}.flow"
 _TASK_LOGGER = f"{_BASE_LOGGER}.task"
+_APP_LOGGERS: Final[tuple[str, ...]] = (_BASE_LOGGER, _FLOW_LOGGER, _TASK_LOGGER)
+
+# Define the log formats for different loggers
+_CONSOLE_FORMATS: dict[str, str] = {
+    _BASE_LOGGER: "%(message)s",
+    _FLOW_LOGGER: "Flow run '%(flow_run_name)s' - %(message)s",
+    _TASK_LOGGER: "Task run '%(task_run_name)s' - %(message)s",
+}
+
+# Base file format for logging
+_BASE_FILE_FORMAT = "%(asctime)s | %(levelname)-7s |"
+
+# Define the file formats for different loggers
+_FILE_FORMATS: dict[str, str] = {
+    "waypoint": _BASE_FILE_FORMAT + " %(name)s - %(message)s",
+    "waypoint.flow": _BASE_FILE_FORMAT + " %(name)s '%(flow_run_name)s' - %(message)s",
+    "waypoint.task": _BASE_FILE_FORMAT + " %(name)s '%(task_run_name)s' - %(message)s",
+}
+
+
+class EnhancedLoggerAdapter(logging.LoggerAdapter):
+    """
+    Adapter that ensures extra kwargs are passed through correctly.
+
+    Without this, the `extra` fields set on the adapter would overshadow any provided
+    on a log-by-log basis.
+
+    See https://bugs.python.org/issue32732 — the Python team has declared that this is
+    not a bug in the LoggingAdapter and subclassing is the intended workaround.
+    """
+
+    def process(
+        self, msg: str, kwargs: MutableMapping[str, Any]
+    ) -> tuple[str, MutableMapping[str, Any]]:
+        """Process the logging call to merge extra context correctly."""
+        # Merge adapter's extra with call-specific extra, preferring call-specific
+        kwargs["extra"] = {**(self.extra or {}), **(kwargs.get("extra") or {})}
+        return (msg, kwargs)
+
+    def getChild(
+        self, suffix: str, extra: dict[str, Any] | None = None
+    ) -> "EnhancedLoggerAdapter":  # pragma: no cover
+        """Create a child adapter with merged extra context."""
+        _extra: dict[str, Any] = extra or {}
+
+        return EnhancedLoggerAdapter(
+            self.logger.getChild(suffix),
+            extra={
+                **(self.extra or {}),
+                **_extra,
+            },
+        )
 
 
 @lru_cache()
@@ -63,19 +117,98 @@ def get_run_logger(default: str | None = None) -> logging.Logger:
     task_run = task_run_context.task_run if task_run_context else None
     flow_run = flow_run_context.flow_run if flow_run_context else None
 
-    logger: logging.Logger | logging.LoggerAdapter[Any]
+    logger: logging.Logger | EnhancedLoggerAdapter
     if task_run:
         logger = logging.getLogger(_TASK_LOGGER)
-        logger = logging.LoggerAdapter(logger, {"task_run_name": task_run.task_id})
+        logger = EnhancedLoggerAdapter(logger, {"task_run_name": task_run.task_id})
     elif flow_run:
         logger = logging.getLogger(_FLOW_LOGGER)
-        logger = logging.LoggerAdapter(logger, {"flow_run_name": flow_run.name})
+        logger = EnhancedLoggerAdapter(logger, {"flow_run_name": flow_run.name})
     elif default is not None:
         logger = get_logger(default)
     else:
         raise MissingContextError("There is no active flow or task run context.")
 
     return cast(logging.Logger, logger)
+
+
+def setup_console_logging(
+    level: int = logging.INFO,
+    traceback: bool = False,
+    use_rich: bool = False,
+) -> None:
+    """
+    Sets up console logging with specified traceback.
+
+    Args:
+        level (int): Logging level to use for the console handler.
+        traceback (bool): Indicates whether to include tracebacks in the console output.
+        use_rich (bool): Indicates whether to use the Rich library for console logging. Library
+            must be installed for this to work (use `waypoint[rich]`). Defaults to False.
+    """
+    _setup_app_loggers()
+
+    logger_handlers = defaultdict(set)
+    for name, fmt in _CONSOLE_FORMATS.items():
+        logger = logging.getLogger(name)
+        handler = _console_handler(fmt, traceback, use_rich)
+        handler.set_name(f"{name} - console")
+        handler.setLevel(level)
+
+        # We need to take care not to add the same handler multiple times to
+        # the same logger. This can happen when the context manager is used
+        # multiple times in the same process.
+        if not any(handler.name == h.name for h in logger.handlers):
+            logger_handlers[logger].add(handler)
+            logger.addHandler(handler)
+
+    return
+
+
+def setup_file_logging(base: Path, level: int = logging.INFO) -> None:
+    """
+    Sets up file logging for the specified file path.
+
+    Args:
+        base (pathlib.Path): Path to the directory where the log file should be written.
+        level (int): Logging level to use for the file handler.
+    """
+    _setup_app_loggers()
+
+    # Because we are altering the logging configuration at runtime, we need to
+    # ensure that the log file exists before we start logging to it.
+    file_path = Path(base).joinpath(".log").resolve()
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.touch(exist_ok=True)
+
+    logger_handlers = defaultdict(set)
+    for name, fmt in _FILE_FORMATS.items():
+        logger = logging.getLogger(name)
+        handler = _file_handler(str(file_path), fmt)
+        handler.set_name(f"{name} - {file_path}")
+        handler.setLevel(level)
+
+        # We need to take care not to add the same handler multiple times to
+        # the same logger. This can happen when the context manager is used
+        # multiple times in the same process.
+        if not any(handler.name == h.name for h in logger.handlers):
+            logger_handlers[logger].add(handler)
+            logger.addHandler(handler)
+
+    return
+
+
+# TODO: Remove pragma when feature is fully implemented
+@contextmanager  # pragma: no cover
+def setup_listener_context(queue: Any) -> Iterator[None]:
+    """Sets up a logging listener context."""
+    yield
+
+
+# TODO: Remove pragma when feature is fully implemented
+def setup_worker_logging(queue: Any) -> None:  # pragma: no cover
+    """Sets up worker logging to send logs to the specified queue."""
+    pass
 
 
 @contextmanager
@@ -99,6 +232,53 @@ def patch_print(enable: bool = True) -> Iterator[None]:
         yield
     finally:
         builtins.print = original
+
+
+def _setup_app_loggers(level: Any = logging.DEBUG) -> None:
+    """Setups update base loggers for the applications."""
+    for name in _APP_LOGGERS:
+        logger = logging.getLogger(name)
+        logger.propagate = False
+        logger.setLevel(level)
+
+
+def _console_handler(format: str, traceback: bool, use_rich: bool) -> logging.Handler:
+    """Creates a console handler for the specified console and format."""
+    handler: logging.Handler
+
+    if not use_rich:
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter(format)
+        handler.setFormatter(formatter)
+        return handler
+
+    try:  # pragma: no cover
+        import rich.logging
+        from rich import get_console
+    except ImportError:  # pragma: no cover
+        raise ImportError("Rich library is required for logging in Waypoint.") from None
+
+    console = get_console()
+    handler = rich.logging.RichHandler(
+        rich_tracebacks=traceback, omit_repeated_times=False, console=console
+    )
+    formatter = logging.Formatter(format)
+    handler.setFormatter(formatter)
+    return handler
+
+
+def _file_handler(filename: str, format: str) -> logging.Handler:
+    """Creates a file handler for the specified filename and format."""
+    handler = logging.handlers.RotatingFileHandler(
+        filename,
+        mode="a",
+        maxBytes=10485760,
+        encoding="utf-8",
+        delay=True,
+    )
+    formatter = logging.Formatter(format)
+    handler.setFormatter(formatter)
+    return handler
 
 
 # TODO: Remove pragma when feature is fully implemented

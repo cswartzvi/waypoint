@@ -91,7 +91,9 @@ class TaskFuture(Generic[R]):
         """Return True if the task completed successfully or was cancelled."""
         return self._raw_future.done()
 
-    def add_done_callback(self, fn: Callable[[concurrent.futures.Future], None]) -> None:
+    def add_done_callback(
+        self, fn: Callable[[concurrent.futures.Future], None]
+    ) -> None:  # pragma: no cover
         """
         Attaches a callable that will be called when the task is completed.
 

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from dataclasses import field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Mapping
 from uuid import UUID
 
@@ -9,7 +10,7 @@ else:
     FlowData = Any
 
 
-@dataclass(frozen=True)
+@dataclass
 class FlowRun:
     """Data about a specific execution of a Waypoint workflow."""
 
@@ -27,6 +28,12 @@ class FlowRun:
 
     task_run_counter: Mapping[str, int] = field(default_factory=dict)
     """Counter for task runs within this flow run, keyed by task name."""
+
+    start_time: datetime | None = None
+    """Timestamp when the flow run started execution."""
+
+    end_time: datetime | None = None
+    """Timestamp when the flow run finished execution."""
 
     def next_task_run_index(self, task_name: str) -> int:
         """
@@ -48,7 +55,7 @@ class FlowRun:
         # Use replace to create a new instance with updated counter
         new_counters = dict(self.task_run_counter)
         new_counters[task_name] = next_count
-        object.__setattr__(self, "task_run_counter", new_counters)
+        self.task_run_counter = new_counters
 
         return next_count
 

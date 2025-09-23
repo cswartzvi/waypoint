@@ -16,7 +16,13 @@ nox.options.sessions = ["lint", "test"]
 def lint(session: nox.Session) -> None:
     """Run linters in an isolated environment."""
     session.install("pre-commit", "pre-commit-uv")
-    session.run("pre-commit", "run", "--all-files", *session.posargs)
+    session.run(
+        "pre-commit",
+        "run",
+        "--all-files",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+        *session.posargs,
+    )
 
 
 @nox.session(python=["3.10", "3.11", "3.12", "3.13", "3.13t"])

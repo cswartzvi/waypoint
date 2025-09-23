@@ -1,15 +1,31 @@
 import abc
-import logging
 from contextlib import ExitStack
 from contextlib import contextmanager
-from typing import Any, Callable, ClassVar, Iterator, Literal, Protocol, TypeVar, final
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Iterator,
+    Literal,
+    Protocol,
+    TypeVar,
+    final,
+)
 
 from typing_extensions import Self
 
 from waypoint.futures import TaskFuture
 from waypoint.logging import get_logger
 
+if TYPE_CHECKING:
+    from waypoint.utils.queues import ConsumerQueue
+else:
+    ConsumerQueue = Any
+
 R = TypeVar("R")
+T_co = TypeVar("T_co")
+
 
 # NOTE: These are the default task runner types. Custom task runners can use any string
 # identifier they want, but these are the ones built into Waypoint.
@@ -99,22 +115,12 @@ class BaseTaskRunner(metaclass=abc.ABCMeta):
                 yield self
             finally:
                 self._started = False
+                self._result_queue = None
 
     def _setup_context(self, stack: ExitStack) -> None:
-        """
-        Set up the context for the task runner.
+        """Set up queue consumers and log forwarding for the task runner."""
 
-        This method is called when the task runner is started and can be used to
-        submit resources to the current stack.
-
-        This is a no-op by default, subclasses should override this method to
-        implement their own setup logic.
-
-        Args:
-            stack: An exit stack that will be used to manage resources.
-        """
-        # Default implementation does nothing, subclasses can override
-        pass  # pragma: no cover
+        # TODO: Add consumer queues for results
 
     @final
     def submit(self, func: Callable[[], Any]) -> TaskFuture[Any]:
@@ -148,11 +154,3 @@ class BaseTaskRunner(metaclass=abc.ABCMeta):
         # NOTE: This method is intentionally not generic over R to avoid complicating
         # the type signature of task runners. Instead, we cast in `submit`.
         raise NotImplementedError
-
-
-@contextmanager
-def log_execution(name: str, logger: logging.Logger):
-    """Helper context manager to log task runner execution in `setup_context`."""
-    logger.debug("Initializing '%s' task runner", name)
-    yield
-    logger.debug("Shutting down '%s' task runner", name)

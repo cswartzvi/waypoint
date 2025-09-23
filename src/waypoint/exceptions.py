@@ -19,16 +19,16 @@ class InvalidFlowError(WaypointException, ValueError):
 class FlowRunError(WaypointException, RuntimeError):
     """Raised when a flow run fails; wraps the original exception."""
 
-    def __init__(self, flow_name: str, exc: Exception):
-        self.flow_name = flow_name
+    def __init__(self, flow_id: str, exc: Exception):
+        self.flow_id = flow_id
         self.exc = exc
 
 
 class TaskRunError(WaypointException, RuntimeError):
     """Raised when a task run fails; wraps the original exception."""
 
-    def __init__(self, task_name: str, exc: Exception | None = None):
-        self.task_name = task_name
+    def __init__(self, task_id: str, exc: Exception | None = None):
+        self.task_id = task_id
         self.exc = exc
 
 
