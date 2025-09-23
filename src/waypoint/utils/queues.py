@@ -1,3 +1,5 @@
+# coverage: skip-file
+
 import abc
 import logging
 import queue
@@ -8,32 +10,14 @@ from contextvars import copy_context
 from pathlib import Path
 from typing import Any, Callable, Generic, Iterator, TypeVar, overload
 
-from typing_extensions import override
+from typing_extensions import final, override
 
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
 
 _QUEUE_SENTINEL: Any = object()
-
 _LOGGER = logging.getLogger(__name__)
-
-
-# region Factory
-
-
-def create_queue(kind: str) -> "ConsumerQueue[Any]":
-    """Factory to create different types of queues based on the specified kind."""
-    if kind == "sequential":
-        return ImmediateQueue[Any]()
-    elif kind == "threading":
-        return ThreadingQueue[Any]()
-    elif kind == "multiprocessing":
-        raise NotImplementedError("MultiprocessingQueue not implemented yet")
-    elif kind == "redis":
-        raise NotImplementedError("RedisQueue not implemented yet")
-    else:
-        raise ValueError(f"Unknown queue kind: {kind}")
 
 
 # region Base Classes
@@ -46,6 +30,11 @@ class BaseQueueProducer(abc.ABC, Generic[T_contra]):
     def put(self, item: T_contra) -> None:
         """Put an item into the queue."""
         ...
+
+    @final
+    def put_nowait(self, item: T_contra) -> None:
+        """Put an item into the queue without blocking. Default to blocking put()."""
+        self.put(item)
 
 
 class BaseQueueConsumer(abc.ABC, Generic[T_co]):
@@ -87,6 +76,16 @@ class ImmediateQueue(ConsumerQueue[T]):
         self._consumer: Callable[[T], None] | None = None
 
     @override
+    def put(self, item: T) -> None:
+        if self._consumer is None:
+            raise RuntimeError("ImmediateQueue has no registered consumer.")
+        self._consumer(item)
+
+    @override
+    def get(self, *, timeout: float | None = None) -> T:
+        raise NotImplementedError("ImmediateQueue does not support get().")
+
+    @override
     @contextmanager
     def consumer(self, callback: Callable[[T], None]) -> Iterator[None]:
         if self._consumer is not None:
@@ -116,7 +115,6 @@ class BaseWorkerQueue(ConsumerQueue[T]):
     def get(self, *, timeout: float | None = None) -> T:
         """Get an item from the queue, with optional timeout."""
         ...
-
 
     @override
     @contextmanager

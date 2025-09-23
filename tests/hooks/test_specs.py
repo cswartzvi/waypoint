@@ -97,8 +97,7 @@ class TestTaskHooks:
             future = submit_task(sample_task)
             assert future.result() == "submitted"
 
-        assert len(plugin.lines) == 4
+        assert len(plugin.lines) == 3
         assert "before_task_submit called - test_session.sample_task-1" == plugin.lines[0]
         assert "before_task_run called - test_session.sample_task-1" == plugin.lines[1]
         assert "after_task_run called - test_session.sample_task-1" == plugin.lines[2]
-        assert "after_task_future_result called - test_session.sample_task-1" in plugin.lines

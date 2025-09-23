@@ -187,10 +187,11 @@ class BaseFlowRunEngine(Generic[P, R]):
         )
         stack.enter_context(flow_run_context)
 
+        self._logger.info("Beginning flow run %s", self.flow_run.flow_id)
+
         try:
             self._run_hook("before_flow_run")
             self.flow_run.start_time = datetime.now()
-            self._logger.info("Beginning flow run %s", self.flow_run.flow_id)
             self._initialized = True
             yield
 
@@ -234,7 +235,7 @@ class _BaseSyncFlowRunEngine(BaseFlowRunEngine[P, R]):
             result (Any): Result of the flow iteration.
             iteration (int, optional): Current iteration index (if applicable).
         """
-        pass
+        # TODO: Implement result processing (e.g., logging, storing results, etc.)
 
 
 @dataclass
@@ -303,7 +304,7 @@ class _BaseAsyncFlowRunEngine(BaseFlowRunEngine[P, R]):
             result (Any): Result of the flow iteration.
             iteration (int, optional): Current iteration index (if applicable).
         """
-        pass
+        # TODO: Implement result processing (e.g., logging, storing results, etc.)
 
 
 @dataclass

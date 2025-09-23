@@ -1,8 +1,10 @@
 import asyncio
 import concurrent.futures
 import inspect
+import queue
 from contextlib import ExitStack
 from contextlib import contextmanager
+from contextvars import Context
 from contextvars import copy_context
 from threading import Event
 from typing import Any, Callable, ClassVar, TypeVar
@@ -13,11 +15,11 @@ from typing_extensions import Self, override
 
 from waypoint.exceptions import TaskRunError
 from waypoint.futures import TaskFuture
+from waypoint.logging import setup_listener_context
 from waypoint.logging import setup_worker_logging
 from waypoint.runners.base import BaseTaskRunner
 from waypoint.runners.base import DefaultTaskRunners
 from waypoint.runners.base import EventLike
-from waypoint.runners.base import log_execution
 
 R = TypeVar("R")
 
@@ -58,6 +60,7 @@ class ThreadingTaskRunner(BaseTaskRunner):
         self._initargs = initargs or ()
         self._executor: concurrent.futures.ThreadPoolExecutor | None = None
         self._event: EventLike | None = None
+        self._log_queue = queue.Queue[Any]()
 
     @override
     def duplicate(self) -> Self:
@@ -67,12 +70,13 @@ class ThreadingTaskRunner(BaseTaskRunner):
     @override
     def _setup_context(self, stack: ExitStack) -> None:
         super()._setup_context(stack)
-        stack.enter_context(log_execution(self.name, self.logger))
+        stack.enter_context(self._log_context())
+        stack.enter_context(setup_listener_context(self._log_queue))
         self._event = Event()
         self._executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=self._max_workers,
-            # initializer=self._initializer,
-            # initargs=self._initargs
+            initializer=self._initializer,
+            initargs=self._initargs,
         )
         stack.enter_context(self._executor)
         stack.enter_context(self._raw_futures_context())
@@ -94,30 +98,33 @@ class ThreadingTaskRunner(BaseTaskRunner):
         # NOTE: Unlike multiprocessing, Python threads share the same process. Therefore we can
         # simply run the task in the current context (e.q. no need to pass context to the engine).
         context = copy_context()
-        context_run: Callable[..., Any] = context.run  # Appeases mypy
 
-        def _run_with_logging(target: Callable[..., Any], *args: Any) -> Any:
-            setup_worker_logging(self.log_queue)
-            return target(*args)
-
-        future: concurrent.futures.Future[Any]
+        run_in_thread_args: list[Any] = [_run_in_thread, context, self._log_queue]
         if inspect.iscoroutinefunction(func):
-            future = self._executor.submit(
-                context_run,
-                _run_with_logging,
-                asyncio.run,
-                func(),
-            )
+            run_in_thread_args.extend((asyncio.run, func()))
         else:
-            future = self._executor.submit(context_run, _run_with_logging, func)
+            run_in_thread_args.append(func)
 
+        future = self._executor.submit(*run_in_thread_args)
         task_future = TaskFuture(future)
         key = uuid4()
         self._raw_futures[key] = future
+
         return task_future
+
+    @contextmanager
+    def _log_context(self):
+        self.logger.debug("Initializing '%s' task runner", self.name)
+        yield
+        self.logger.debug("Shutting down '%s' task runner", self.name)
 
     @contextmanager
     def _raw_futures_context(self):
         self._raw_futures.clear()
         yield
         concurrent.futures.wait(self._raw_futures.values())
+
+
+def _run_in_thread(context: Context, log_queue: queue.Queue, *args) -> Any:
+    setup_worker_logging(log_queue)
+    return context.run(*args)

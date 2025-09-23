@@ -3,7 +3,6 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from dataclasses import field
 from functools import wraps
-from logging import Logger
 from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterator, ParamSpec, TypeVar, overload
 
 from waypoint.futures import TaskFuture
@@ -392,6 +391,10 @@ def _submit_task(
     from waypoint.hooks.manager import try_run_hook
     from waypoint.logging import get_run_logger
     from waypoint.runners.sequential import SequentialTaskRunner
+    from waypoint.task_engine import consume_generator_task_async
+    from waypoint.task_engine import consume_generator_task_sync
+    from waypoint.task_engine import run_task_async
+    from waypoint.task_engine import run_task_sync
     from waypoint.task_run import create_task_run
 
     logger = get_run_logger()
@@ -402,15 +405,32 @@ def _submit_task(
     else:
         task_data = get_task_data(task_function)
 
+    original_function = task_data._original_function
     task_run = create_task_run(task_data, arguments)
 
-    # Create the appropriate wrapper function based on whether the task is sync or async
-    wrapper: Callable[[], Any]
+    params: dict = {
+        "task_function": original_function,
+        "task_data": task_data,
+        "task_run": task_run,
+    }
     if task_data.is_async:
-        wrapper = _async_submit_wrapper(task_data._original_function, task_data, task_run)
+        # Wrapper async function to run the task with the task engine. Async generator should be
+        # consumed fully within the wrapper, as task runners expect a final result.
+        @wraps(original_function)
+        async def wrapper() -> Any:  # pyright: ignore
+            if task_data.is_generator:
+                return await consume_generator_task_async(**params)
+            else:
+                return await run_task_async(**params)
     else:
-        wrapper = _sync_submit_wrapper(task_data._original_function, task_data, task_run)
-    wrapper = wraps(task_function)(wrapper)
+        # Wrapper sync function to run the task with the task engine. Generator should be
+        # consumed fully within the wrapper, as task runners expect a final result.
+        @wraps(original_function)
+        def wrapper() -> Any:
+            if task_data.is_generator:
+                return consume_generator_task_sync(**params)
+            else:
+                return run_task_sync(**params)
 
     logger.debug(f"Submitting task '{task_run.task_id}' to '{task_runner.name}' runner")
 
@@ -430,19 +450,7 @@ def _submit_task(
             return task_runner.submit(wrapper)
 
     future = task_runner.submit(wrapper)
-    future.add_done_callback(
-        _queue_task_result(task_runner, task_data, task_run, logger)
-    )
     return future
-
-
-@dataclass(slots=True)
-class TaskResultMessage:
-    task_data: "TaskData"
-    task_run: "TaskRun"
-    task_runner_name: str
-    future: Future
-    logger: Logger
 
 
 def _create_best_effort_task_data(func: Callable[..., Any]) -> "TaskData":
@@ -459,99 +467,3 @@ def _create_best_effort_task_data(func: Callable[..., Any]) -> "TaskData":
     _add_task_data(func, task_data)
 
     return task_data
-
-
-def _sync_submit_wrapper(
-    task_function: Callable[..., R], task_data: "TaskData", task_run: TaskRun
-) -> Callable[[], R]:
-    """Create a synchronous wrapper to submit a task to the task engine."""
-    from waypoint.task_engine import consume_generator_task_sync
-    from waypoint.task_engine import run_task_sync
-
-    engine_params: dict[str, Any] = {
-        "task_function": task_function,
-        "task_data": task_data,
-        "task_run": task_run,
-    }
-
-    # Wrapper sync function to run the task with the task engine. Note that generator should be
-    # consumed fully within the wrapper, as task runners expect a final result (not a generator).
-    def sync_task_wrapper() -> Any:
-        if task_data.is_generator:
-            return consume_generator_task_sync(**engine_params)
-        else:
-            return run_task_sync(**engine_params)
-
-    return sync_task_wrapper
-
-
-def _async_submit_wrapper(
-    task_function: Callable[..., R], task_data: "TaskData", task_run: TaskRun
-) -> Callable[[], Coroutine[Any, Any, R]]:
-    """Create an asynchronous wrapper to submit a task to the task engine."""
-    from waypoint.task_engine import consume_generator_task_async
-    from waypoint.task_engine import run_task_async
-
-    engine_params: dict[str, Any] = {
-        "task_function": task_function,
-        "task_data": task_data,
-        "task_run": task_run,
-    }
-
-    # Wrapper async function to run the task with the task engine. Note that generator should be
-    # consumed fully within the wrapper, as task runners expect a final result (not a generator).
-    async def async_task_wrapper() -> Any:
-        if task_data.is_generator:
-            return await consume_generator_task_async(**engine_params)
-        else:
-            return await run_task_async(**engine_params)
-
-    return async_task_wrapper
-
-
-def _queue_task_result(
-    task_runner: BaseTaskRunner,
-    task_data: "TaskData",
-    task_run: "TaskRun",
-    logger: Logger,
-) -> Callable[[Future], None]:
-    def _callback(future: Future) -> None:
-        message = TaskResultMessage(
-            task_data=task_data,
-            task_run=task_run,
-            task_runner_name=task_runner.name,
-            future=future,
-            logger=logger,
-        )
-        task_runner.enqueue_completed_task(message)
-
-    return _callback
-
-
-def process_task_result(message: TaskResultMessage) -> None:
-    from waypoint.hooks.manager import try_run_hook
-
-    future = message.future
-    task_run = message.task_run
-    logger = message.logger
-
-    cancelled = future.cancelled()
-    error = future.exception()
-
-    text = f"Task '{task_run.task_id}' returned from runner '{message.task_runner_name}'"
-    if cancelled:  # pragma: no cover
-        text = f"Task '{task_run.task_id}' was cancelled in runner '{message.task_runner_name}'"
-    elif error is not None:
-        text = f"Task '{task_run.task_id}' raised an exception in runner '{message.task_runner_name}'"
-    logger.debug(text)
-
-    result = future.result() if not cancelled and error is None else None
-    try_run_hook(
-        hook_name="after_task_future_result",
-        task_data=message.task_data,
-        task_run=task_run,
-        error=error,
-        cancelled=cancelled,
-        result=result,
-        task_runner=message.task_runner_name,
-    )
