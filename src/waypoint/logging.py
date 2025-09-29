@@ -177,7 +177,7 @@ def setup_file_logging(base: Path, level: int = logging.INFO) -> None:
 
     # Because we are altering the logging configuration at runtime, we need to
     # ensure that the log file exists before we start logging to it.
-    file_path = Path(base).joinpath(".log").resolve()
+    file_path = Path(base).resolve()
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.touch(exist_ok=True)
 
