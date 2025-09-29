@@ -175,7 +175,7 @@ def setup_file_logging(
     Sets up file logging for the specified file path.
 
     Args:
-        base (pathlib.Path): Path to the directory where the log file should be written.
+        base (pathlib.Path): Path to the log file where logs should be written.
         level (int): Logging level to use for the file handler.
         loggers (Iterable[str]): Additional logger names to configure beyond the default loggers.
     """
