@@ -38,3 +38,6 @@ class InMemoryAssetStore(BaseAssetStore):
         """Remove any data stored for ``key``."""
         with self._lock:
             self._data.pop(key, None)
+
+    def __str__(self) -> str:  # pragma: no cover
+        return "in-memory asset store"

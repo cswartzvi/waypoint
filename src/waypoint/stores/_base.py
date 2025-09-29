@@ -40,3 +40,7 @@ class BaseAssetStore(ABC):
     @abstractmethod
     def delete(self, key: str) -> None:
         """Remove the asset at the provided key if it exists."""
+
+    @abstractmethod
+    def __str__(self) -> str:
+        pass

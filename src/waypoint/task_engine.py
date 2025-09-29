@@ -272,7 +272,9 @@ class _BaseSyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
         if flow_context is None or flow_context.asset_store is None:  # pragma: no cover
             return
 
-        mapper.save(result, store=flow_context.asset_store)
+        key = mapper.save(result, store=flow_context.asset_store)
+        logger = get_run_logger()
+        logger.info("Saved result to asset store '%s'", key)
 
 
 @dataclass
@@ -351,7 +353,9 @@ class _BaseAsyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
         if flow_context is None or flow_context.asset_store is None:  # pragma: no cover
             return
 
-        mapper.save(result, store=flow_context.asset_store)
+        key = mapper.save(result, store=flow_context.asset_store)
+        logger = get_run_logger()
+        logger.info("Saved result to asset store '%s'", key)
 
 
 @dataclass

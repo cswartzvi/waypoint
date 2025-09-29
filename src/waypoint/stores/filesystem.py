@@ -68,3 +68,6 @@ class FileSystemAssetStore(BaseAssetStore):
         path = self._resolve_key(key)
         if path.exists():
             path.unlink()
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"filesystem asset store '{self._base_path.as_posix()}'"
