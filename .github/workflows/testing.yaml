@@ -39,8 +39,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Debug environment (Windows only)
+        if: matrix.os == 'windows-latest'
+        run: |
+          echo "Python version: ${{ matrix.python-version }}"
+          uv run python --version
+          uv run python -c "import sys; print(f'Python: {sys.version}'); print(f'Platform: {sys.platform}'); print(f'Executable: {sys.executable}')"
+          uv run python -c "import tempfile, pathlib; td=tempfile.mkdtemp(); print(f'Temp dir: {td}'); p=pathlib.Path(td); print(f'Exists: {p.exists()}, Is dir: {p.is_dir()}, Resolved: {p.resolve()}')"
+
       - name: Run tests
-        run: uv run pytest --cov=waypoint --cov-branch --cov-report=xml --cov-report=term
+        run: uv run pytest --cov=waypoint --cov-branch --cov-report=xml --cov-report=term -v
 
       # Upload coverage reports to Codecov for latest Python on Ubuntu only
       - name: Upload coverage reports to Codecov
