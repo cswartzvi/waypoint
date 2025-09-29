@@ -1,4 +1,5 @@
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -21,7 +22,14 @@ def store_factory(request):
     else:  # filesystem
 
         def _create_fs_store():
-            temp_dir = tempfile.mkdtemp()
+            # Create temp directory with more explicit error handling for CI
+            temp_dir = tempfile.mkdtemp(prefix="waypoint_test_")
+
+            # Ensure the directory is properly accessible
+            temp_path = Path(temp_dir)
+            if not temp_path.exists() or not temp_path.is_dir():
+                raise RuntimeError(f"Failed to create test directory: {temp_dir}")
+
             return store_class(temp_dir)
 
         return _create_fs_store

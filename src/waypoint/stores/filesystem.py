@@ -17,19 +17,31 @@ class FileSystemAssetStore(BaseAssetStore):
         path = Path(base_path)
         path = path.resolve() if not path.is_absolute() else path
         if create:
-            path.mkdir(parents=True, exist_ok=True)
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:  # pragma: no cover - defensive
+                raise AssetStoreError(
+                    f"Failed to create asset store directory '{path}': {exc}"
+                ) from exc
         if not path.exists() or not path.is_dir():  # pragma: no cover - defensive
-            raise AssetStoreError(f"Asset store path '{path}' is not a directory")
+            exists = path.exists()
+            is_dir = path.is_dir() if exists else "N/A"
+            raise AssetStoreError(
+                f"Asset store path '{path}' is not a directory (exists: {exists}, is_dir: {is_dir})"
+            )
         self._base_path = path
 
     def _resolve_key(self, key: str) -> Path:
         """Resolve ``key`` to a concrete path within the base directory."""
         candidate = (self._base_path / key).resolve()
         try:
-            candidate.relative_to(self._base_path)
+            # Ensure both paths are resolved for proper comparison on Windows
+            resolved_base = self._base_path.resolve()
+            candidate.relative_to(resolved_base)
         except ValueError as exc:  # pragma: no cover - defensive
             raise AssetStoreError(
-                f"Asset key '{key}' resolves outside of store root '{self._base_path}'"
+                f"Asset key '{key}' resolves outside of store root '{self._base_path}' "
+                f"(resolved: candidate='{candidate}', base='{self._base_path.resolve()}')"
             ) from exc
         return candidate
 
