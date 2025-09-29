@@ -21,6 +21,7 @@ from typing import (
     cast,
 )
 
+from waypoint.context import FlowRunContext
 from waypoint.context import TaskRunContext
 from waypoint.exceptions import TaskRunError
 from waypoint.hooks.manager import get_hook_manager
@@ -33,6 +34,8 @@ from waypoint.utils.timing import format_duration
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+_MISSING = object()
 
 if TYPE_CHECKING:
     from pluggy import PluginManager
@@ -258,7 +261,20 @@ class _BaseSyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
             result (Any): Result of the task iteration.
             iteration (int, optional): Current iteration index.
         """
-        pass
+        if iteration is not None:
+            return
+
+        mapper = self.task_data.mapper
+        if mapper is None:
+            return
+
+        flow_context = FlowRunContext.get()
+        if flow_context is None or flow_context.asset_store is None:  # pragma: no cover
+            return
+
+        key = mapper.save(result, store=flow_context.asset_store)
+        logger = get_run_logger()
+        logger.info("Saved result to asset store '%s'", key)
 
 
 @dataclass
@@ -326,7 +342,20 @@ class _BaseAsyncTaskRunEngine(_BaseTaskRunEngine[P, R]):
             result (Any): Result of the task iteration.
             iteration (int): Current iteration index.
         """
-        pass
+        if iteration is not None:
+            return
+
+        mapper = self.task_data.mapper
+        if mapper is None:
+            return
+
+        flow_context = FlowRunContext.get()
+        if flow_context is None or flow_context.asset_store is None:  # pragma: no cover
+            return
+
+        key = mapper.save(result, store=flow_context.asset_store)
+        logger = get_run_logger()
+        logger.info("Saved result to asset store '%s'", key)
 
 
 @dataclass

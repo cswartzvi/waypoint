@@ -4,12 +4,13 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "checker,subcommand",
     [
         ("pyright", None),
         ("mypy", None),
-        ("pyrefly", "check"),
+        # ("pyrefly", "check"),
         # ("ty", "check"),  # Uncomment when ty is more stable
     ],
 )

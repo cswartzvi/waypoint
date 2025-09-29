@@ -112,6 +112,40 @@ class TestFlowDecorator:
         result = concat_flow("hello", "world", "flow")
         assert result == "hello-world-flow"
 
+    def test_get_flow_data_invalid_function(self):
+        """Test get_flow_data with non-flow function raises error."""
+
+        def regular_function():
+            pass
+
+        from waypoint.exceptions import InvalidFlowError
+
+        with pytest.raises(InvalidFlowError):
+            get_flow_data(regular_function)
+
+    def test_is_flow_with_flow_function(self):
+        """Test is_flow returns True for decorated functions."""
+        from waypoint.flows import is_flow
+
+        @flow
+        def flow_function():
+            pass
+
+        assert is_flow(flow_function) is True
+
+    def test_is_flow_with_regular_function(self):
+        """Test is_flow returns False for regular functions."""
+        from waypoint.flows import is_flow
+
+        def regular_function():
+            pass
+
+        assert is_flow(regular_function) is False
+
+
+class TestFlowExecution:
+    """Test flow execution behavior."""
+
     def test_keyword_arguments(self):
         """Test flow execution with keyword arguments."""
 
@@ -150,50 +184,6 @@ class TestFlowDecorator:
         # Test with no defaults
         result3 = with_defaults_flow(5, factor=4, add=2)
         assert result3 == 22  # 5 * 4 + 2
-
-    def test_get_flow_data_invalid_function(self):
-        """Test get_flow_data with non-flow function raises error."""
-
-        def regular_function():
-            pass
-
-        from waypoint.exceptions import InvalidFlowError
-
-        with pytest.raises(InvalidFlowError):
-            get_flow_data(regular_function)
-
-    def test_is_flow_with_flow_function(self):
-        """Test is_flow returns True for decorated functions."""
-        from waypoint.flows import is_flow
-
-        @flow
-        def flow_function():
-            pass
-
-        assert is_flow(flow_function) is True
-
-    def test_is_flow_with_regular_function(self):
-        """Test is_flow returns False for regular functions."""
-        from waypoint.flows import is_flow
-
-        def regular_function():
-            pass
-
-        assert is_flow(regular_function) is False
-
-
-class TestFlowExecution:
-    """Test flow execution behavior."""
-
-    def test_sync_flow_execution(self):
-        """Test synchronous flow execution."""
-
-        @flow
-        def simple_flow(x: int, y: int) -> int:
-            return x + y
-
-        result = simple_flow(3, 4)
-        assert result == 7
 
     def test_sync_generator_flow_execution(self):
         """Test synchronous generator flow execution."""

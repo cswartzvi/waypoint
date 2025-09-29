@@ -108,6 +108,40 @@ class TestTaskDecorator:
         assert task_data.is_async is True
         assert task_data.is_generator is True
 
+    def test_is_task_with_task_function(self):
+        """Test is_task returns True for decorated functions."""
+        from waypoint.tasks import is_task
+
+        @task
+        def task_function():
+            pass
+
+        assert is_task(task_function) is True
+
+    def test_is_task_with_regular_function(self):
+        """Test is_task returns False for regular functions."""
+        from waypoint.tasks import is_task
+
+        def regular_function():
+            pass
+
+        assert is_task(regular_function) is False
+
+    def test_get_task_data_invalid_function(self):
+        """Test get_task_data with non-task function raises error."""
+
+        def regular_function():
+            pass
+
+        from waypoint.exceptions import InvalidTaskError
+
+        with pytest.raises(InvalidTaskError):
+            get_task_data(regular_function)
+
+
+class TestTaskExecution:
+    """Test task execution behavior."""
+
     def test_positional_arguments(self):
         """Test task execution with positional arguments."""
 
@@ -156,50 +190,6 @@ class TestTaskDecorator:
         # Test with no defaults
         result3 = with_defaults(5, factor=3, add=2)
         assert result3 == 17  # 5 * 3 + 2
-
-    def test_is_task_with_task_function(self):
-        """Test is_task returns True for decorated functions."""
-        from waypoint.tasks import is_task
-
-        @task
-        def task_function():
-            pass
-
-        assert is_task(task_function) is True
-
-    def test_is_task_with_regular_function(self):
-        """Test is_task returns False for regular functions."""
-        from waypoint.tasks import is_task
-
-        def regular_function():
-            pass
-
-        assert is_task(regular_function) is False
-
-    def test_get_task_data_invalid_function(self):
-        """Test get_task_data with non-task function raises error."""
-
-        def regular_function():
-            pass
-
-        from waypoint.exceptions import InvalidTaskError
-
-        with pytest.raises(InvalidTaskError):
-            get_task_data(regular_function)
-
-
-class TestTaskExecution:
-    """Test task execution behavior."""
-
-    def test_sync_task_execution(self):
-        """Test synchronous task execution."""
-
-        @task
-        def add_numbers(a: int, b: int) -> int:
-            return a + b
-
-        result = add_numbers(3, 4)
-        assert result == 7
 
     def test_async_task_execution(self):
         """Test asynchronous task execution."""

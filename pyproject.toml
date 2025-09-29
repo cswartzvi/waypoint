@@ -1,8 +1,8 @@
 [project]
 name = "waypoint"
-version = "0.1.0"
 description = "Workflow orchestration library."
 readme = "README.md"
+dynamic = ["version"]
 authors = [{ name = "Charles Swartz", email = "charles.w.swartz.vi@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
@@ -35,3 +35,12 @@ dev = [
     "ruff",
     "nox>=2025.5.1",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "waypoint.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"waypoint" = ["py.typed"]
