@@ -205,11 +205,11 @@ class TestSetupFileLogging:
                     logger.removeHandler(handler)  # Remove first
                     handler.close()  # Then close
 
+            log_file = Path(temp_dir) / "run.log"
             # Act
-            setup_file_logging(Path(temp_dir), level=logging.ERROR)
+            setup_file_logging(log_file, level=logging.ERROR)
 
             # Assert - check that log file was created and loggers have file handlers
-            log_file = Path(temp_dir) / ".log"
             assert log_file.exists()
 
             for logger_name in ["waypoint", "waypoint.flow", "waypoint.task"]:

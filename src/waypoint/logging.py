@@ -6,6 +6,7 @@ import logging.handlers
 import sys
 from builtins import print  # required for patching
 from collections import defaultdict
+from collections.abc import Iterable
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -136,6 +137,7 @@ def setup_console_logging(
     level: int = logging.INFO,
     traceback: bool = False,
     use_rich: bool = False,
+    loggers: Iterable[str] | None = None,
 ) -> None:
     """
     Sets up console logging with specified traceback.
@@ -145,8 +147,9 @@ def setup_console_logging(
         traceback (bool): Indicates whether to include tracebacks in the console output.
         use_rich (bool): Indicates whether to use the Rich library for console logging. Library
             must be installed for this to work (use `waypoint[rich]`). Defaults to False.
+        loggers (Iterable[str]): Additional logger names to configure beyond the default loggers.
     """
-    _setup_app_loggers()
+    _setup_loggers(level=level, loggers=loggers)
 
     logger_handlers = defaultdict(set)
     for name, fmt in _CONSOLE_FORMATS.items():
@@ -165,19 +168,22 @@ def setup_console_logging(
     return
 
 
-def setup_file_logging(base: Path, level: int = logging.INFO) -> None:
+def setup_file_logging(
+    base: Path, level: int = logging.INFO, loggers: Iterable[str] | None = None
+) -> None:
     """
     Sets up file logging for the specified file path.
 
     Args:
-        base (pathlib.Path): Path to the directory where the log file should be written.
+        base (pathlib.Path): Path to the log file where logs should be written.
         level (int): Logging level to use for the file handler.
+        loggers (Iterable[str]): Additional logger names to configure beyond the default loggers.
     """
-    _setup_app_loggers()
+    _setup_loggers(level=level, loggers=loggers)
 
     # Because we are altering the logging configuration at runtime, we need to
     # ensure that the log file exists before we start logging to it.
-    file_path = Path(base).joinpath(".log").resolve()
+    file_path = Path(base).resolve()
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.touch(exist_ok=True)
 
@@ -234,9 +240,10 @@ def patch_print(enable: bool = True) -> Iterator[None]:
         builtins.print = original
 
 
-def _setup_app_loggers(level: Any = logging.DEBUG) -> None:
+def _setup_loggers(level: Any = logging.DEBUG, loggers: Iterable[str] | None = None) -> None:
     """Setups update base loggers for the applications."""
-    for name in _APP_LOGGERS:
+    loggers = loggers or []
+    for name in _APP_LOGGERS + tuple(loggers):
         logger = logging.getLogger(name)
         logger.propagate = False
         logger.setLevel(level)
