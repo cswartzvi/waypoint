@@ -257,7 +257,6 @@ class BoundAssetMapper(Generic[T]):
                 missing = exc.args[0] if exc.args else str(exc)
                 available = set(base_params.keys())
                 raise AssetKeyFormatError(
-                    self.key_or_func,
                     f"Missing parameter '{missing}' for key template. Available: {available}",
                 )
 

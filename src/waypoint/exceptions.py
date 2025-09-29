@@ -113,15 +113,6 @@ class AssetNotFoundError(AssetStoreError):
 class AssetKeyFormatError(WaypointException, ValueError):
     """Raised when an asset mapper fails to materialize a key from contextual data."""
 
-    def __init__(self, template: str, missing_key: str):
-        msg = (
-            "Failed to format asset key from template '{template}'. Missing value for placeholder "
-            "'{missing}'."
-        ).format(template=template, missing=missing_key)
-        super().__init__(msg)
-        self.template = template
-        self.missing_key = missing_key
-
 
 class AssetMapperError(WaypointException, RuntimeError):
     """Raised when an asset mapper cannot serialize or deserialize a value."""
