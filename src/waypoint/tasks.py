@@ -5,6 +5,7 @@ from dataclasses import field
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable, Coroutine, Iterator, ParamSpec, TypeVar, overload
 
+from waypoint.assets import BoundAssetMapper
 from waypoint.futures import TaskFuture
 
 if TYPE_CHECKING:
@@ -14,10 +15,10 @@ if TYPE_CHECKING:
     from waypoint.runners import DefaultTaskRunner
     from waypoint.task_run import TaskRun
 else:
-    Future = Any
-    BaseTaskRunner = Any
-    DefaultTaskRunner = Any
-    TaskRun = Any
+    Future = object
+    BaseTaskRunner = object
+    DefaultTaskRunner = object
+    TaskRun = object
 
 
 R = TypeVar("R")
@@ -43,6 +44,9 @@ class TaskData:
 
     log_prints: bool = False
     """Whether to log print statements during the task run."""
+
+    mapper: BoundAssetMapper[Any] | None = None
+    """Optional mapper for persisting task results."""
 
 
 def _add_task_data(func: Callable[P, R], task_data: TaskData) -> Callable[P, R]:
@@ -103,6 +107,7 @@ def task(
     *,
     name: str | None = None,
     log_prints: bool = False,
+    mapper: BoundAssetMapper[Any] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -111,6 +116,7 @@ def task(
     *,
     name: str | None = None,
     log_prints: bool = False,
+    mapper: BoundAssetMapper[Any] | None = None,
 ) -> Callable[..., Any] | Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Wraps a callable as a workflow - the orchestration layer of the Waypoint framework.
@@ -128,10 +134,10 @@ def task(
             Callable (sync or async) to be executed as a workflow.
         name (str, optional):
             Name for the workflow. If not provided, the function's name is used.
-        task_runner (BaseTaskRunner | DefaultTaskRunners | str, optional):
-            Task runner to use for executing tasks in the workflow. Defaults to "sequential".
         log_prints (bool, optional):
             Whether to log print statements during the task run. Defaults to False.
+        mapper (AssetMapper[Any], optional):
+            Mapper used to serialize returned task results to the configured asset store.
     """
     from waypoint.task_engine import run_generator_task_async
     from waypoint.task_engine import run_generator_task_sync
@@ -145,13 +151,16 @@ def task(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         task_name = get_function_name(func) if name is None else name
+        is_async = is_asynchronous(func)
+        is_gen = is_generator(func)
 
         task_data = TaskData(
             name=task_name,
-            is_async=is_asynchronous(func),
-            is_generator=is_generator(func),
+            is_async=is_async,
+            is_generator=is_gen,
             log_prints=log_prints,
             _original_function=func,
+            mapper=mapper,
         )
 
         # Common engine API parameters
@@ -463,6 +472,7 @@ def _create_best_effort_task_data(func: Callable[..., Any]) -> "TaskData":
         is_async=is_asynchronous(func),
         is_generator=is_generator(func),
         _original_function=func,
+        mapper=None,
     )
     _add_task_data(func, task_data)
 

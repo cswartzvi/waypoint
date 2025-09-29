@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
+from dataclasses import field
 from functools import wraps
 from typing import (
     TYPE_CHECKING,
@@ -11,12 +12,18 @@ from typing import (
     overload,
 )
 
+from waypoint.assets import BoundAssetMapper
+
 if TYPE_CHECKING:
     from waypoint.runners import BaseTaskRunner
     from waypoint.runners import DefaultTaskRunner
+    from waypoint.stores.filesystem import BaseAssetStore
 else:
-    BaseTaskRunner = object
-    DefaultTaskRunner = object
+    BaseAssetStore = Any
+    BaseTaskRunner = Any
+    DefaultTaskRunner = Any
+
+from waypoint.stores.memory import InMemoryAssetStore
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -43,6 +50,12 @@ class FlowData:
 
     log_prints: bool = False
     """Whether to log print statements during the flow run."""
+
+    asset_store: BaseAssetStore = field(default_factory=InMemoryAssetStore)
+    """Asset store associated with the flow for persisting artifacts."""
+
+    mapper: BoundAssetMapper[Any] | None = None
+    """Optional mapper for persisting flow results."""
 
 
 def _add_flow_data(func: Callable[P, R], flow_data: FlowData) -> Callable[P, R]:
@@ -104,6 +117,8 @@ def flow(
     name: str | None = None,
     task_runner: BaseTaskRunner | DefaultTaskRunner | str | None = None,
     log_prints: bool = False,
+    store: BaseAssetStore | None = None,
+    mapper: BoundAssetMapper[Any] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 
 
@@ -113,6 +128,8 @@ def flow(
     name: str | None = None,
     task_runner: BaseTaskRunner | DefaultTaskRunner | str | None = None,
     log_prints: bool = False,
+    store: BaseAssetStore | None = None,
+    mapper: BoundAssetMapper[Any] | None = None,
 ) -> Callable[..., Any] | Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     Wraps a callable as a workflow - the orchestration layer of the Waypoint framework.
@@ -134,6 +151,11 @@ def flow(
             Task runner to use for executing tasks in the workflow. Defaults to "sequential".
         log_prints (bool, optional):
             Whether to log print statements during the flow run. Defaults to False.
+        store (BaseAssetStore, optional):
+            Store implementation used to persist assets for this flow. Defaults to
+            :class:`~waypoint.assets.stores.InMemoryAssetStore`.
+        mapper (AssetMapper[Any], optional):
+            Mapper used to serialize returned flow results to the configured asset store.
     """
     from waypoint.flow_engine import run_flow_async
     from waypoint.flow_engine import run_flow_sync
@@ -146,12 +168,17 @@ def flow(
     from waypoint.utils.callables import is_generator
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        is_async = is_asynchronous(func)
+        is_gen = is_generator(func)
+
         flow_data = FlowData(
             name=name if name is not None else func.__name__,
             task_runner=get_task_runner(task_runner if task_runner else "sequential"),
-            is_async=is_asynchronous(func),
-            is_generator=is_generator(func),
+            is_async=is_async,
+            is_generator=is_gen,
             log_prints=log_prints,
+            asset_store=store or InMemoryAssetStore(),
+            mapper=mapper,
         )
 
         # Common engine API parameters

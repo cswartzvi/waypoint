@@ -36,6 +36,8 @@ from waypoint.utils.timing import format_duration
 P = ParamSpec("P")
 R = TypeVar("R")
 
+_MISSING = object()
+
 if TYPE_CHECKING:
     from pluggy import PluginManager
 else:
@@ -140,7 +142,13 @@ def create_flow_session(flow_data: FlowData, flow_run: FlowRun) -> Iterator[None
     task_runner = get_task_runner(flow_data.task_runner).duplicate()
 
     with task_runner.start():
-        with FlowRunContext(flow_data=flow_data, flow_run=flow_run, task_runner=task_runner):
+        asset_store = flow_data.asset_store.duplicate()
+        with FlowRunContext(
+            flow_data=flow_data,
+            flow_run=flow_run,
+            task_runner=task_runner,
+            asset_store=asset_store,
+        ):
             yield
 
 
@@ -180,10 +188,13 @@ class BaseFlowRunEngine(Generic[P, R]):
         task_runner = self.flow_data.task_runner.duplicate()
         stack.enter_context(task_runner.start())
 
+        asset_store = self.flow_data.asset_store.duplicate()
+
         flow_run_context = FlowRunContext(
             flow_data=self.flow_data,
             flow_run=self.flow_run,
             task_runner=task_runner,
+            asset_store=asset_store,
         )
         stack.enter_context(flow_run_context)
 
@@ -235,7 +246,18 @@ class _BaseSyncFlowRunEngine(BaseFlowRunEngine[P, R]):
             result (Any): Result of the flow iteration.
             iteration (int, optional): Current iteration index (if applicable).
         """
-        # TODO: Implement result processing (e.g., logging, storing results, etc.)
+        if iteration is not None:
+            return
+
+        mapper = self.flow_data.mapper
+        if mapper is None:
+            return
+
+        flow_context = FlowRunContext.get()
+        if flow_context is None or flow_context.asset_store is None:  # pragma: no cover
+            return
+
+        mapper.save(result, store=flow_context.asset_store)
 
 
 @dataclass
@@ -304,7 +326,18 @@ class _BaseAsyncFlowRunEngine(BaseFlowRunEngine[P, R]):
             result (Any): Result of the flow iteration.
             iteration (int, optional): Current iteration index (if applicable).
         """
-        # TODO: Implement result processing (e.g., logging, storing results, etc.)
+        if iteration is not None:
+            return
+
+        mapper = self.flow_data.mapper
+        if mapper is None:
+            return
+
+        flow_context = FlowRunContext.get()
+        if flow_context is None or flow_context.asset_store is None:  # pragma: no cover
+            return
+
+        mapper.save(result, store=flow_context.asset_store)
 
 
 @dataclass

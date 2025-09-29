@@ -15,6 +15,7 @@ from pydantic import PrivateAttr
 from typing_extensions import Self
 
 from waypoint.runners.base import BaseTaskRunner
+from waypoint.stores.filesystem import BaseAssetStore
 from waypoint.tasks import TaskData
 from waypoint.utils.subclasses import iter_subclasses
 
@@ -120,6 +121,9 @@ class FlowRunContext(ContextModel):
     Note that the task runner may be duplicated for each flow run to ensure
     that the task runner's state is isolated to the flow run.
     """
+
+    asset_store: BaseAssetStore | None = None
+    """Asset store available to tasks within this flow run."""
 
 
 class HooksContext(ContextModel):
